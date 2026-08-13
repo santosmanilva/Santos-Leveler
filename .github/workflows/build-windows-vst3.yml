@@ -1,0 +1,44 @@
+name: Build Windows VST3
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+env:
+  BUILD_DIR: build/windows-ci
+
+jobs:
+  windows-vst3:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B $env:BUILD_DIR -G "Visual Studio 17 2022" -A x64 -DSANTOS_BUILD_DSP_TESTS=ON
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build $env:BUILD_DIR --config Release --target SantosLeveler_VST3 SantosLevelerDSPTests
+
+      - name: Run DSP tests
+        shell: pwsh
+        run: ctest --test-dir $env:BUILD_DIR -C Release --output-on-failure
+
+      - name: Stage VST3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          $plugin = Get-ChildItem -Path $env:BUILD_DIR -Recurse -Directory -Filter "*.vst3" | Select-Object -First 1
+          if ($null -eq $plugin) { throw "No .vst3 bundle found" }
+          Copy-Item -Path $plugin.FullName -Destination package -Recurse
+
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SANTOS-LEVELER-Windows-x64-VST3
+          path: package
+          if-no-files-found: error
