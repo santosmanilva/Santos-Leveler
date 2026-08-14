@@ -116,12 +116,12 @@ SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLeve
       outputMeter (p, MeterComponent::Source::output, "OUTPUT LEVEL", green),
       targetAttachment (p.apvts, "target", targetKnob),
       gateAttachment (p.apvts, "gate", gateKnob),
-    speedAttachment(p.apvts, "speed", speedKnob),
-    detectAttachment(p.apvts, "detect", detectKnob),
-    lookaheadAttachment(p.apvts, "lookahead", lookaheadKnob),
-    holdAttachment(p.apvts, "hold", holdKnob),
-    releaseAttachment(p.apvts, "release", releaseKnob),
-    rangeDownAttachment(p.apvts, "rangeDown", rangeDownSlider),
+      speedAttachment (p.apvts, "speed", speedKnob),
+      detectAttachment (p.apvts, "detect", detectKnob),
+      lookaheadAttachment (p.apvts, "lookahead", lookaheadKnob),
+      holdAttachment (p.apvts, "hold", holdKnob),
+      releaseAttachment (p.apvts, "release", releaseKnob),
+      rangeDownAttachment (p.apvts, "rangeDown", rangeDownSlider),
       rangeUpAttachment (p.apvts, "rangeUp", rangeUpSlider),
       outputAttachment (p.apvts, "output", outputSlider)
 {
@@ -142,9 +142,9 @@ SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLeve
     configureKnob (gateKnob, gateLabel, "GATE", " dB", 1);
     configureKnob (speedKnob, speedLabel, "SPEED", " ms", 0);
     configureKnob (detectKnob, detectLabel, "DETECT", " ms", 0);
-    configureKnob(lookaheadKnob, lookaheadLabel, "LOOKAHEAD", " ms", 0);
-    configureKnob(holdKnob, holdLabel, "HOLD", " ms", 0);
-    configureKnob(releaseKnob, releaseLabel, "RELEASE", " ms", 0);
+    configureKnob (lookaheadKnob, lookaheadLabel, "LOOKAHEAD", " ms", 0);
+    configureKnob (holdKnob, holdLabel, "HOLD", " ms", 0);
+    configureKnob (releaseKnob, releaseLabel, "RELEASE", " ms", 0);
 
     configureFader (rangeDownSlider, rangeDownLabel, "RANGE DOWN", " dB", 1, orange);
     configureFader (rangeUpSlider, rangeUpLabel, "RANGE UP", " dB", 1, green);
@@ -154,9 +154,17 @@ SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLeve
     styleLabel (historyLabel, 12.0f, text, juce::Justification::centredLeft);
     addAndMakeVisible (historyLabel);
 
-    legendLabel.setText ("INPUT     RIDER     OUTPUT", juce::dontSendNotification);
-    styleLabel (legendLabel, 10.0f, muted, juce::Justification::centredRight);
-    addAndMakeVisible (legendLabel);
+    inputLegendLabel.setText ("INPUT", juce::dontSendNotification);
+    styleLabel (inputLegendLabel, 10.0f, cyan, juce::Justification::centred);
+    addAndMakeVisible (inputLegendLabel);
+
+    riderLegendLabel.setText ("RIDER", juce::dontSendNotification);
+    styleLabel (riderLegendLabel, 10.0f, yellow, juce::Justification::centred);
+    addAndMakeVisible (riderLegendLabel);
+
+    outputLegendLabel.setText ("OUTPUT", juce::dontSendNotification);
+    styleLabel (outputLegendLabel, 10.0f, green, juce::Justification::centred);
+    addAndMakeVisible (outputLegendLabel);
 
     addAndMakeVisible (history);
     addAndMakeVisible (inputMeter);
@@ -272,19 +280,18 @@ void SantosLevelerAudioProcessorEditor::resized()
     {
         const auto x = firstX + i * (knobW + gap);
 
-        knobs[i]->setBounds(
+        knobs[i]->setBounds (
             x,
             knobY,
             knobW,
             knobH);
 
-        labels[i]->setBounds(
+        labels[i]->setBounds (
             x,
             knobY + knobH + 2,
             knobW,
             20);
     }
-    
 
     const int lowerTop = 285;
     const int meterHeight = 58;
@@ -304,7 +311,15 @@ void SantosLevelerAudioProcessorEditor::resized()
     const int historyX = 310;
     const int historyW = std::max (260, w - historyX - 185);
     historyLabel.setBounds (historyX, lowerTop, 100, 20);
-    legendLabel.setBounds (historyX + historyW - 210, lowerTop, 210, 20);
+
+    const int legendWidth = 64;
+    const int legendGap = 4;
+    const int legendTotalWidth = legendWidth * 3 + legendGap * 2;
+    const int legendStartX = historyX + historyW - legendTotalWidth;
+    inputLegendLabel.setBounds (legendStartX, lowerTop, legendWidth, 20);
+    riderLegendLabel.setBounds (legendStartX + legendWidth + legendGap, lowerTop, legendWidth, 20);
+    outputLegendLabel.setBounds (legendStartX + (legendWidth + legendGap) * 2, lowerTop, legendWidth, 20);
+
     history.setBounds (historyX, lowerTop + 24, historyW, std::max (150, lowerBottom - lowerTop - 28));
 
     const int meterGap = 34;
