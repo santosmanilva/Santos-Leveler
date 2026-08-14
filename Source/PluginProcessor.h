@@ -75,7 +75,7 @@ private:
     std::atomic<bool> transportPlaying { true };
     std::atomic<bool> hostTransportKnown { false };
 
-    std::array<float, spectrumSize> spectrumInput {};
+    std::array<std::atomic<float>, spectrumSize> spectrumInput {};
     std::atomic<std::uint32_t> spectrumWriteCount { 0 };
 
     int historyCounter = 0;
