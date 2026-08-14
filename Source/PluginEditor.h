@@ -29,11 +29,25 @@ private:
     class HistoryComponent final : public juce::Component
     {
     public:
-        explicit HistoryComponent (SantosLevelerAudioProcessor& p) : processor (p) {}
+        explicit HistoryComponent (SantosLevelerAudioProcessor& p);
         void paint (juce::Graphics&) override;
+        void setViewMode (int newMode);
 
     private:
+        void drawClassic (juce::Graphics&, juce::Rectangle<float>, const std::vector<SantosHistoryPoint>&);
+        void drawArea (juce::Graphics&, juce::Rectangle<float>, const std::vector<SantosHistoryPoint>&);
+        void drawLayers (juce::Graphics&, juce::Rectangle<float>, const std::vector<SantosHistoryPoint>&);
+        void drawSpectrum (juce::Graphics&, juce::Rectangle<float>);
+        void drawRadar (juce::Graphics&, juce::Rectangle<float>, const std::vector<SantosHistoryPoint>&);
+        void drawBroadcast (juce::Graphics&, juce::Rectangle<float>);
+
         SantosLevelerAudioProcessor& processor;
+        int viewMode = 0;
+        juce::dsp::FFT fft { 11 };
+        juce::dsp::WindowingFunction<float> window { SantosLevelerAudioProcessor::spectrumSize,
+                                                      juce::dsp::WindowingFunction<float>::hann };
+        std::array<float, SantosLevelerAudioProcessor::spectrumSize> spectrumSamples {};
+        std::array<float, SantosLevelerAudioProcessor::spectrumSize * 2> fftData {};
     };
 
     class MeterComponent final : public juce::Component
@@ -64,8 +78,9 @@ private:
     juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel, peakThresholdLabel;
     juce::Label rangeDownLabel, rangeUpLabel, outputLabel;
 
-    juce::Label titleLabel, subtitleLabel, historyLabel;
-    juce::Label inputLegendLabel, riderLegendLabel, outputLegendLabel;
+    juce::Label titleLabel, subtitleLabel, historyLabel, viewLabel;
+    juce::Label inputLegendLabel, riderLegendLabel, peakLegendLabel, outputLegendLabel;
+    juce::ComboBox viewSelector;
 
     HistoryComponent history;
     MeterComponent inputMeter;
@@ -82,6 +97,7 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment rangeDownAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment rangeUpAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment outputAttachment;
+    juce::AudioProcessorValueTreeState::ComboBoxAttachment viewAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SantosLevelerAudioProcessorEditor)
 };
