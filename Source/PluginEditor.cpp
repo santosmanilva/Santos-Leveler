@@ -121,6 +121,7 @@ SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLeve
       lookaheadAttachment (p.apvts, "lookahead", lookaheadKnob),
       holdAttachment (p.apvts, "hold", holdKnob),
       releaseAttachment (p.apvts, "release", releaseKnob),
+      peakThresholdAttachment (p.apvts, "peakThreshold", peakThresholdKnob),
       rangeDownAttachment (p.apvts, "rangeDown", rangeDownSlider),
       rangeUpAttachment (p.apvts, "rangeUp", rangeUpSlider),
       outputAttachment (p.apvts, "output", outputSlider)
@@ -145,6 +146,7 @@ SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLeve
     configureKnob (lookaheadKnob, lookaheadLabel, "LOOKAHEAD", " ms", 0);
     configureKnob (holdKnob, holdLabel, "HOLD", " ms", 0);
     configureKnob (releaseKnob, releaseLabel, "RELEASE", " ms", 0);
+    configureKnob (peakThresholdKnob, peakThresholdLabel, "PEAK", " dBFS", 1);
 
     configureFader (rangeDownSlider, rangeDownLabel, "RANGE DOWN", " dB", 1, orange);
     configureFader (rangeUpSlider, rangeUpLabel, "RANGE UP", " dB", 1, green);
@@ -245,10 +247,10 @@ void SantosLevelerAudioProcessorEditor::resized()
     const int knobY = 100;
     const int knobH = 130;
 
-    constexpr int knobCount = 7;
+    constexpr int knobCount = 8;
     const int firstX = 42;
     const int rightMargin = 42;
-    const int gap = 10;
+    const int gap = 8;
 
     const int knobW =
         (w - firstX - rightMargin - gap * (knobCount - 1))
@@ -262,7 +264,8 @@ void SantosLevelerAudioProcessorEditor::resized()
         &detectKnob,
         &lookaheadKnob,
         &holdKnob,
-        &releaseKnob
+        &releaseKnob,
+        &peakThresholdKnob
     };
 
     juce::Label* labels[] =
@@ -273,7 +276,8 @@ void SantosLevelerAudioProcessorEditor::resized()
         &detectLabel,
         &lookaheadLabel,
         &holdLabel,
-        &releaseLabel
+        &releaseLabel,
+        &peakThresholdLabel
     };
 
     for (int i = 0; i < knobCount; ++i)
