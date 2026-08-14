@@ -7,13 +7,6 @@ class SantosLevelerAudioProcessorEditor final : public juce::AudioProcessorEdito
                                                  private juce::Timer
 {
 public:
-    explicit SantosLevelerAudioProcessorEditor (SantosLevelerAudioProcessor&);
-    ~SantosLevelerAudioProcessorEditor() override;
-
-    void paint (juce::Graphics&) override;
-    void resized() override;
-
-private:
     enum class Skin
     {
         classicPro = 0,
@@ -31,6 +24,13 @@ private:
         off
     };
 
+    explicit SantosLevelerAudioProcessorEditor (SantosLevelerAudioProcessor&);
+    ~SantosLevelerAudioProcessorEditor() override;
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
     class SantosLookAndFeel final : public juce::LookAndFeel_V4
     {
     public:
