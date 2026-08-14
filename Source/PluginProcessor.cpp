@@ -14,6 +14,7 @@ constexpr auto paramPeakThreshold = "peakThreshold";
 constexpr auto paramRangeDown     = "rangeDown";
 constexpr auto paramRangeUp       = "rangeUp";
 constexpr auto paramOutput        = "output";
+constexpr auto paramView          = "view";
 
 juce::NormalisableRange<float> skewedRange (float start, float end, float centre, float interval)
 {
@@ -29,11 +30,14 @@ SantosLevelerAudioProcessor::SantosLevelerAudioProcessor()
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    for (auto& sample : spectrumInput)
+        sample.store (0.0f, std::memory_order_relaxed);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor::createParameterLayout()
 {
     using APF = juce::AudioParameterFloat;
+    using APC = juce::AudioParameterChoice;
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramTarget, 1 }, "Target",
@@ -80,6 +84,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.5f), 0.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
+    layout.add (std::make_unique<APC> (juce::ParameterID { paramView, 1 }, "View",
+                                       juce::StringArray { "Classic", "Area", "Layers", "Spectrum", "Radar", "Broadcast" },
+                                       0));
+
     return layout;
 }
 
@@ -120,6 +128,10 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     historyPeriodSamples = std::max(
         1,
         static_cast<int> (std::round(sampleRate / 60.0)));
+
+    spectrumWriteCount.store (0, std::memory_order_relaxed);
+    for (auto& sample : spectrumInput)
+        sample.store (0.0f, std::memory_order_relaxed);
 }
 
 void SantosLevelerAudioProcessor::releaseResources()
@@ -208,6 +220,9 @@ void SantosLevelerAudioProcessor::processBlock(
         const float detectorL = left[i];
         const float detectorR = right != nullptr ? right[i] : detectorL;
 
+        const auto spectrumIndex = spectrumWriteCount.fetch_add (1, std::memory_order_relaxed) % spectrumSize;
+        spectrumInput[spectrumIndex].store (0.5f * (detectorL + detectorR), std::memory_order_relaxed);
+
         delayLeft[lookaheadWritePosition] = detectorL;
 
         if (delayRight != nullptr)
@@ -257,7 +272,25 @@ void SantosLevelerAudioProcessor::processBlock(
     inputMeterDb.store(telemetry.inputDb, std::memory_order_relaxed);
     outputMeterDb.store(telemetry.outputDb, std::memory_order_relaxed);
     riderMeterDb.store(telemetry.riderDb, std::memory_order_relaxed);
+    peakMeterDb.store(telemetry.peakDb, std::memory_order_relaxed);
     riderActive.store(telemetry.riderActive, std::memory_order_relaxed);
+}
+
+void SantosLevelerAudioProcessor::copySpectrumInput (std::array<float, spectrumSize>& destination) const noexcept
+{
+    const auto end = spectrumWriteCount.load (std::memory_order_relaxed);
+    const auto start = end >= spectrumSize ? end - static_cast<std::uint32_t> (spectrumSize) : 0u;
+    const auto available = std::min<std::uint32_t> (end, static_cast<std::uint32_t> (spectrumSize));
+    const auto leadingZeros = static_cast<std::size_t> (spectrumSize - available);
+
+    std::fill (destination.begin(), destination.begin() + static_cast<std::ptrdiff_t> (leadingZeros), 0.0f);
+
+    for (std::uint32_t i = 0; i < available; ++i)
+    {
+        const auto sequence = start + i;
+        const auto index = sequence % spectrumSize;
+        destination[leadingZeros + i] = spectrumInput[index].load (std::memory_order_relaxed);
+    }
 }
 
 void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
