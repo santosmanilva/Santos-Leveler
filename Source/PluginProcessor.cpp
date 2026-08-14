@@ -3,16 +3,17 @@
 
 namespace
 {
-constexpr auto paramTarget    = "target";
-constexpr auto paramGate      = "gate";
-constexpr auto paramSpeed     = "speed";
-constexpr auto paramDetect    = "detect";
-constexpr auto paramLookahead = "lookahead";
-constexpr auto paramHold      = "hold";
-constexpr auto paramRelease   = "release";
-constexpr auto paramRangeDown = "rangeDown";
-constexpr auto paramRangeUp   = "rangeUp";
-constexpr auto paramOutput    = "output";
+constexpr auto paramTarget        = "target";
+constexpr auto paramGate          = "gate";
+constexpr auto paramSpeed         = "speed";
+constexpr auto paramDetect        = "detect";
+constexpr auto paramLookahead     = "lookahead";
+constexpr auto paramHold          = "hold";
+constexpr auto paramRelease       = "release";
+constexpr auto paramPeakThreshold = "peakThreshold";
+constexpr auto paramRangeDown     = "rangeDown";
+constexpr auto paramRangeUp       = "rangeUp";
+constexpr auto paramOutput        = "output";
 
 juce::NormalisableRange<float> skewedRange (float start, float end, float centre, float interval)
 {
@@ -51,18 +52,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        skewedRange (1.0f, 100.0f, 10.0f, 1.0f), 8.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
 
-    layout.add(std::make_unique<APF>(juce::ParameterID{ paramLookahead, 1 }, "Lookahead",
-                                      juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 30.0f,
-                                      juce::AudioParameterFloatAttributes().withLabel("ms")));
-    layout.add(std::make_unique<APF>(juce::ParameterID{ paramHold, 1 }, "Hold",
-                                      juce::NormalisableRange<float>(0.0f, 1000.0f, 10.0f),
-                                      100.0f,
-                                      juce::AudioParameterFloatAttributes().withLabel("ms")));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramLookahead, 1 }, "Lookahead",
+                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 30.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("ms")));
 
-    layout.add(std::make_unique<APF>(juce::ParameterID{ paramRelease, 1 }, "Release",
-                                      skewedRange(50.0f, 3000.0f, 500.0f, 10.0f),
-                                      500.0f,
-                                      juce::AudioParameterFloatAttributes().withLabel("ms")));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramHold, 1 }, "Hold",
+                                       juce::NormalisableRange<float> (0.0f, 1000.0f, 10.0f), 100.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("ms")));
+
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramRelease, 1 }, "Release",
+                                       skewedRange (50.0f, 3000.0f, 500.0f, 10.0f), 500.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("ms")));
+
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramPeakThreshold, 1 }, "Peak Threshold",
+                                       juce::NormalisableRange<float> (-18.0f, -1.0f, 0.5f), -9.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("dBFS")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeDown, 1 }, "Range Down",
                                        juce::NormalisableRange<float> (-12.0f, 0.0f, 0.5f), -9.0f,
@@ -120,6 +124,7 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
         1,
         static_cast<int> (std::round(sampleRate / 60.0)));
 }
+
 void SantosLevelerAudioProcessor::releaseResources()
 {
 }
@@ -174,6 +179,9 @@ void SantosLevelerAudioProcessor::processBlock(
 
     p.releaseMs =
         apvts.getRawParameterValue(paramRelease)->load();
+
+    p.peakThresholdDb =
+        apvts.getRawParameterValue(paramPeakThreshold)->load();
 
     p.rangeDownDb =
         apvts.getRawParameterValue(paramRangeDown)->load();
