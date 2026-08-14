@@ -8,6 +8,8 @@ constexpr auto paramGate      = "gate";
 constexpr auto paramSpeed     = "speed";
 constexpr auto paramDetect    = "detect";
 constexpr auto paramLookahead = "lookahead";
+constexpr auto paramHold      = "hold";
+constexpr auto paramRelease   = "release";
 constexpr auto paramRangeDown = "rangeDown";
 constexpr auto paramRangeUp   = "rangeUp";
 constexpr auto paramOutput    = "output";
@@ -51,6 +53,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
 
     layout.add(std::make_unique<APF>(juce::ParameterID{ paramLookahead, 1 }, "Lookahead",
                                       juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 30.0f,
+                                      juce::AudioParameterFloatAttributes().withLabel("ms")));
+    layout.add(std::make_unique<APF>(juce::ParameterID{ paramHold, 1 }, "Hold",
+                                      juce::NormalisableRange<float>(0.0f, 1000.0f, 10.0f),
+                                      100.0f,
+                                      juce::AudioParameterFloatAttributes().withLabel("ms")));
+
+    layout.add(std::make_unique<APF>(juce::ParameterID{ paramRelease, 1 }, "Release",
+                                      skewedRange(50.0f, 3000.0f, 500.0f, 10.0f),
+                                      500.0f,
                                       juce::AudioParameterFloatAttributes().withLabel("ms")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeDown, 1 }, "Range Down",
@@ -154,6 +165,15 @@ void SantosLevelerAudioProcessor::processBlock(
 
     p.detectMs =
         apvts.getRawParameterValue(paramDetect)->load();
+
+    p.lookaheadMs =
+        apvts.getRawParameterValue(paramLookahead)->load();
+
+    p.holdMs =
+        apvts.getRawParameterValue(paramHold)->load();
+
+    p.releaseMs =
+        apvts.getRawParameterValue(paramRelease)->load();
 
     p.rangeDownDb =
         apvts.getRawParameterValue(paramRangeDown)->load();
