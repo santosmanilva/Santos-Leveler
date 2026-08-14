@@ -64,7 +64,8 @@ private:
     juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel;
     juce::Label rangeDownLabel, rangeUpLabel, outputLabel;
 
-    juce::Label titleLabel, subtitleLabel, historyLabel, legendLabel;
+    juce::Label titleLabel, subtitleLabel, historyLabel;
+    juce::Label inputLegendLabel, riderLegendLabel, outputLegendLabel;
 
     HistoryComponent history;
     MeterComponent inputMeter;
