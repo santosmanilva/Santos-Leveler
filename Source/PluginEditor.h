@@ -58,10 +58,10 @@ private:
     SantosLevelerAudioProcessor& processor;
     SantosLookAndFeel lookAndFeel;
 
-    juce::Slider targetKnob, gateKnob, speedKnob, detectKnob, lookaheadKnob, holdKnob, releaseKnob;
+    juce::Slider targetKnob, gateKnob, speedKnob, detectKnob, lookaheadKnob, holdKnob, releaseKnob, peakThresholdKnob;
     juce::Slider rangeDownSlider, rangeUpSlider, outputSlider;
 
-    juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel;
+    juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel, peakThresholdLabel;
     juce::Label rangeDownLabel, rangeUpLabel, outputLabel;
 
     juce::Label titleLabel, subtitleLabel, historyLabel;
@@ -78,6 +78,7 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment lookaheadAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment holdAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment releaseAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment peakThresholdAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment rangeDownAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment rangeUpAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment outputAttachment;
