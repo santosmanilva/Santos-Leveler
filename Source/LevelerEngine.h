@@ -62,68 +62,50 @@ public:
         lastTelemetry = {};
     }
 
-    Telemetry processSample(float& left, float& right, const Parameters& p)
+    Telemetry processSample (float& left, float& right, const Parameters& p)
     {
         const auto detectorLeft = left;
         const auto detectorRight = right;
-
-        return processSampleLookahead(detectorLeft, detectorRight, left, right, p);
+        return processSampleLookahead (detectorLeft, detectorRight, left, right, p);
     }
 
-    Telemetry processSampleLookahead(float detectorLeft,
-        float detectorRight,
-        float& left,
-        float& right,
-        const Parameters& p)
+    Telemetry processSampleLookahead (float detectorLeft,
+                                      float detectorRight,
+                                      float& left,
+                                      float& right,
+                                      const Parameters& p)
     {
-        const auto detectMs = std::clamp(p.detectMs, 1.0f, 100.0f);
+        const auto detectMs = std::clamp (p.detectMs, 1.0f, 100.0f);
 
-        inputDetector.setWindowMs(detectMs);
-        outputDetector.setWindowMs(detectMs);
+        inputDetector.setWindowMs (detectMs);
+        outputDetector.setWindowMs (detectMs);
 
-        // El detector analiza la señal sin retrasar.
         const auto inputRms =
-            inputDetector.process(detectorLeft,
-                detectorRight,
-                numChannels);
+            inputDetector.process (detectorLeft, detectorRight, numChannels);
 
-        const auto inputDb = gainToDb(inputRms);
-
+        const auto inputDb = gainToDb (inputRms);
 
         // ------------------------------------------------------------
         // DETECTOR PEAK
         // ------------------------------------------------------------
 
-        // Medimos el pico instantáneo de la señal original,
-        // antes del Lookahead.
         const auto instantaneousPeak =
             numChannels > 1
-            ? std::max(std::abs(detectorLeft),
-                std::abs(detectorRight))
-            : std::abs(detectorLeft);
+                ? std::max (std::abs (detectorLeft), std::abs (detectorRight))
+                : std::abs (detectorLeft);
 
-        const auto instantaneousPeakDb =
-            gainToDb(instantaneousPeak);
+        const auto instantaneousPeakDb = gainToDb (instantaneousPeak);
 
-
-        // Ataque instantáneo:
-        // si aparece un pico mayor, lo capturamos inmediatamente.
         if (instantaneousPeakDb > peakEnvelopeDb)
         {
             peakEnvelopeDb = instantaneousPeakDb;
         }
         else
         {
-            // La lectura de pico cae más lentamente para evitar
-            // que desaparezca inmediatamente después del transitorio.
-            const auto peakReleaseAlpha =
-                timeConstantAlpha(80.0f);
-
+            const auto peakReleaseAlpha = timeConstantAlpha (80.0f);
             peakEnvelopeDb +=
-                peakReleaseAlpha
-                * (instantaneousPeakDb - peakEnvelopeDb);
+                peakReleaseAlpha * (instantaneousPeakDb - peakEnvelopeDb);
         }
-
 
         // ------------------------------------------------------------
         // CÁLCULO DEL RIDER
@@ -133,71 +115,68 @@ public:
         {
             const auto errorDb = p.targetDb - inputDb;
 
-            const auto positive =
-                std::clamp(errorDb, 0.0f, 12.0f)
-                * (std::clamp(p.rangeUpDb, 0.0f, 12.0f) / 12.0f);
+            // RANGE UP y RANGE DOWN son límites reales de corrección.
+            // No escalan el error ni cambian la pendiente hacia TARGET.
+            const auto minCorrectionDb =
+                std::clamp (p.rangeDownDb, -12.0f, 0.0f);
 
-            const auto negative =
-                std::clamp(errorDb, -12.0f, 0.0f)
-                * (std::clamp(-p.rangeDownDb, 0.0f, 12.0f) / 12.0f);
+            const auto maxCorrectionDb =
+                std::clamp (p.rangeUpDb, 0.0f, 12.0f);
 
             detectorActive = inputDb > p.gateDb;
 
             const auto newCorrectionDb =
                 detectorActive
-                ? positive + negative
-                : 0.0f;
+                    ? std::clamp (errorDb, minCorrectionDb, maxCorrectionDb)
+                    : 0.0f;
 
             latestRequestedCorrectionDb = newCorrectionDb;
 
-
             // --------------------------------------------------------
             // HOLD
-            //
-            // Si aparece una corrección MÁS fuerte, reaccionamos.
-            //
-            // Si la corrección intenta volver hacia 0 dB,
-            // mantenemos temporalmente la corrección anterior.
             // --------------------------------------------------------
+            // HOLD solo retrasa una relajación hacia 0 dB.
+            // Si la corrección aumenta o cambia de signo, reaccionamos
+            // inmediatamente: nunca retenemos un boost cuando aparece
+            // una señal que ya necesita atenuación, ni al revés.
 
             constexpr float epsilonDb = 0.05f;
 
             const auto heldNearZero =
-                std::abs(heldCorrectionDb) < epsilonDb;
+                std::abs (heldCorrectionDb) < epsilonDb;
 
             const auto newNearZero =
-                std::abs(newCorrectionDb) < epsilonDb;
+                std::abs (newCorrectionDb) < epsilonDb;
 
             const bool sameDirection =
                 heldNearZero
                 || newNearZero
-                || ((heldCorrectionDb > 0.0f)
-                    == (newCorrectionDb > 0.0f));
+                || ((heldCorrectionDb > 0.0f) == (newCorrectionDb > 0.0f));
 
-            const bool newIsAtLeastAsStrong =
+            const bool relaxingTowardUnity =
                 sameDirection
-                && std::abs(newCorrectionDb)
-                >= std::abs(heldCorrectionDb) - epsilonDb;
+                && std::abs (newCorrectionDb)
+                   < std::abs (heldCorrectionDb) - epsilonDb;
 
+            const bool directionChanged =
+                ! heldNearZero
+                && ! newNearZero
+                && ! sameDirection;
 
-            if (newIsAtLeastAsStrong)
+            if (directionChanged || ! relaxingTowardUnity)
             {
-                // Una corrección más fuerte siempre tiene prioridad.
                 heldCorrectionDb = newCorrectionDb;
-
                 holdActive = false;
                 holdSamplesRemaining = 0;
             }
-            else if (!holdActive)
+            else if (! holdActive)
             {
-                // La corrección quiere relajarse.
-                // Empezamos el tiempo de HOLD.
                 const auto safeHoldMs =
-                    std::clamp(p.holdMs, 0.0f, 1000.0f);
+                    std::clamp (p.holdMs, 0.0f, 1000.0f);
 
                 holdSamplesRemaining =
                     static_cast<int> (
-                        std::round(
+                        std::round (
                             sampleRate
                             * static_cast<double> (safeHoldMs)
                             * 0.001));
@@ -209,11 +188,6 @@ public:
         }
 
         --controlCountdown;
-
-
-        // ------------------------------------------------------------
-        // CONTADOR HOLD
-        // ------------------------------------------------------------
 
         if (holdActive)
         {
@@ -227,179 +201,135 @@ public:
             }
         }
 
-
-        // Mientras HOLD esté activo conservamos la corrección anterior.
         const auto effectiveCorrectionDb =
-            holdActive
-            ? heldCorrectionDb
-            : latestRequestedCorrectionDb;
+            holdActive ? heldCorrectionDb : latestRequestedCorrectionDb;
 
-        if (!holdActive)
+        if (! holdActive)
             heldCorrectionDb = latestRequestedCorrectionDb;
 
-
-        targetRiderGain =
-            dbToGain(effectiveCorrectionDb);
-
+        targetRiderGain = dbToGain (effectiveCorrectionDb);
 
         // ------------------------------------------------------------
         // SPEED / RELEASE
         // ------------------------------------------------------------
+        // SPEED se usa para cualquier corrección nueva o más fuerte,
+        // incluyendo un cambio de boost a reducción o viceversa.
+        // RELEASE se reserva para volver suavemente hacia 0 dB.
 
-        const auto currentRiderDb =
-            gainToDb(currentRiderGain);
+        const auto currentRiderDb = gainToDb (currentRiderGain);
 
-        constexpr float epsilonDb = 0.05f;
+        constexpr float smoothingEpsilonDb = 0.05f;
 
         const auto currentNearZero =
-            std::abs(currentRiderDb) < epsilonDb;
+            std::abs (currentRiderDb) < smoothingEpsilonDb;
 
         const auto targetNearZero =
-            std::abs(effectiveCorrectionDb) < epsilonDb;
+            std::abs (effectiveCorrectionDb) < smoothingEpsilonDb;
 
-        const bool sameDirection =
+        const bool smoothingSameDirection =
             currentNearZero
             || targetNearZero
-            || ((currentRiderDb > 0.0f)
-                == (effectiveCorrectionDb > 0.0f));
+            || ((currentRiderDb > 0.0f) == (effectiveCorrectionDb > 0.0f));
 
-        const bool movingAwayFromUnity =
-            sameDirection
-            && std::abs(effectiveCorrectionDb)
-       > std::abs(currentRiderDb) + epsilonDb;
+        const bool movingTowardUnity =
+            smoothingSameDirection
+            && std::abs (effectiveCorrectionDb)
+               < std::abs (currentRiderDb) - smoothingEpsilonDb;
 
+        const auto safeSpeedMs =
+            std::clamp (p.speedMs, 2.0f, 250.0f);
 
-       // SPEED controla la velocidad para aplicar la corrección.
-       const auto safeSpeedMs =
-           std::clamp(p.speedMs, 2.0f, 250.0f);
+        const auto safeReleaseMs =
+            std::clamp (p.releaseMs, 50.0f, 3000.0f);
 
+        const auto riderAlpha =
+            movingTowardUnity
+                ? timeConstantAlpha (safeReleaseMs)
+                : timeConstantAlpha (safeSpeedMs);
 
-       // RELEASE controla la vuelta hacia una corrección menor / 0 dB.
-       const auto safeReleaseMs =
-           std::clamp(p.releaseMs, 50.0f, 3000.0f);
+        currentRiderGain +=
+            riderAlpha * (targetRiderGain - currentRiderGain);
 
+        // ------------------------------------------------------------
+        // PROTECCIÓN DE PICOS
+        // ------------------------------------------------------------
 
-       const auto riderAlpha =
-           movingAwayFromUnity
-           ? timeConstantAlpha(safeSpeedMs)
-           : timeConstantAlpha(safeReleaseMs);
+        const auto peakThresholdDb =
+            std::clamp (p.peakThresholdDb, -18.0f, -1.0f);
 
+        const auto predictedPeakDb =
+            peakEnvelopeDb + gainToDb (currentRiderGain);
 
-       currentRiderGain +=
-           riderAlpha
-           * (targetRiderGain - currentRiderGain);
+        if (predictedPeakDb > peakThresholdDb)
+        {
+            peakReductionDb =
+                std::clamp (
+                    peakThresholdDb - predictedPeakDb,
+                    -9.0f,
+                    0.0f);
+        }
+        else
+        {
+            peakReductionDb = 0.0f;
+        }
 
-       // ------------------------------------------------------------
-       // PROTECCIÓN DE PICOS
-       // ------------------------------------------------------------
+        const auto targetPeakGain = dbToGain (peakReductionDb);
 
-       // El umbral PEAK es ahora independiente del TARGET.
-       // No es un limitador True Peak: es el punto a partir del cual
-       // entra en acción la protección rápida de transitorios.
-       const auto peakThresholdDb =
-           std::clamp(p.peakThresholdDb, -18.0f, -1.0f);
+        const bool needsPeakReduction =
+            targetPeakGain < currentPeakGain;
 
+        const auto peakAlpha =
+            needsPeakReduction
+                ? timeConstantAlpha (1.0f)
+                : timeConstantAlpha (100.0f);
 
-       // Calculamos dónde quedaría el pico después
-       // del rider normal.
-       const auto predictedPeakDb =
-           peakEnvelopeDb + gainToDb(currentRiderGain);
+        currentPeakGain +=
+            peakAlpha * (targetPeakGain - currentPeakGain);
 
+        // ------------------------------------------------------------
+        // OUTPUT
+        // ------------------------------------------------------------
 
-       // Calculamos una reducción adicional,
-       // limitada a un máximo de 9 dB.
-       if (predictedPeakDb > peakThresholdDb)
-       {
-           peakReductionDb =
-               std::clamp(
-                   peakThresholdDb - predictedPeakDb,
-                   -9.0f,
-                   0.0f);
-       }
-       else
-       {
-           peakReductionDb = 0.0f;
-       }
+        const auto wantedOutputGain =
+            dbToGain (std::clamp (p.outputDb, -12.0f, 12.0f));
 
+        const auto outputAlpha = timeConstantAlpha (30.0f);
 
-       // Convertimos la reducción PEAK a ganancia.
-       const auto targetPeakGain =
-           dbToGain(peakReductionDb);
+        currentOutputGain +=
+            outputAlpha * (wantedOutputGain - currentOutputGain);
 
+        const auto totalGain =
+            currentRiderGain
+            * currentPeakGain
+            * currentOutputGain;
 
-       // Cuando aparece un pico, actuamos rápidamente.
-       // Cuando desaparece, recuperamos suavemente.
-       const bool needsPeakReduction =
-           targetPeakGain < currentPeakGain;
+        left *= totalGain;
 
-       const auto peakAlpha =
-           needsPeakReduction
-           ? timeConstantAlpha(1.0f)
-           : timeConstantAlpha(100.0f);
+        if (numChannels > 1)
+            right *= totalGain;
+        else
+            right = left;
 
+        const auto outputRms =
+            outputDetector.process (left, right, numChannels);
 
-       currentPeakGain +=
-           peakAlpha
-           * (targetPeakGain - currentPeakGain);
+        const auto outputDb = gainToDb (outputRms);
 
-           // ------------------------------------------------------------
-           // OUTPUT
-           // ------------------------------------------------------------
+        // ------------------------------------------------------------
+        // TELEMETRÍA
+        // ------------------------------------------------------------
 
-           const auto wantedOutputGain =
-               dbToGain(
-                   std::clamp(p.outputDb, -12.0f, 12.0f));
+        lastTelemetry.inputDb = inputDb;
+        lastTelemetry.riderDb = gainToDb (currentRiderGain);
+        lastTelemetry.outputDb = outputDb;
 
-           const auto outputAlpha =
-               timeConstantAlpha(30.0f);
+        riderActive =
+            detectorActive
+            || std::abs (lastTelemetry.riderDb) > 0.05f;
 
-           currentOutputGain +=
-               outputAlpha
-               * (wantedOutputGain - currentOutputGain);
+        lastTelemetry.riderActive = riderActive;
 
-
-           const auto totalGain =
-               currentRiderGain
-               * currentPeakGain
-               * currentOutputGain;
-
-
-           // La ganancia se aplica al audio retrasado por Lookahead.
-           left *= totalGain;
-
-           if (numChannels > 1)
-               right *= totalGain;
-           else
-               right = left;
-
-
-           const auto outputRms =
-               outputDetector.process(left,
-                   right,
-                   numChannels);
-
-           const auto outputDb =
-               gainToDb(outputRms);
-
-
-           // ------------------------------------------------------------
-           // TELEMETRÍA
-           // ------------------------------------------------------------
-
-           lastTelemetry.inputDb = inputDb;
-           lastTelemetry.riderDb =
-               gainToDb(currentRiderGain);
-
-           lastTelemetry.outputDb = outputDb;
-
-           // Seguimos indicando RIDER activo durante Hold/Release.
-           riderActive =
-               detectorActive
-               || std::abs(lastTelemetry.riderDb) > 0.05f;
-
-           lastTelemetry.riderActive = riderActive;
-
-           return lastTelemetry;
+        return lastTelemetry;
     }
 
     Telemetry getTelemetry() const noexcept { return lastTelemetry; }
