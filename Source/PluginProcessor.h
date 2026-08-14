@@ -47,8 +47,18 @@ public:
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
 
 private:
+private:
     SantosLevelerEngine engine;
     SantosHistoryBuffer history;
+
+    juce::AudioBuffer<float> lookaheadBuffer;
+
+    double currentSampleRate = 48000.0;
+
+    int lookaheadWritePosition = 0;
+    int lookaheadBufferSize = 1;
+    int maxLookaheadSamples = 0;
+    int currentLookaheadSamples = 0;
 
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
