@@ -17,6 +17,7 @@ public:
         float lookaheadMs = 30.0f;
         float holdMs = 100.0f;
         float releaseMs = 500.0f;
+        float peakThresholdDb = -9.0f;
         float rangeDownDb = -9.0f;
         float rangeUpDb = 9.0f;
         float outputDb = 0.0f;
@@ -292,14 +293,11 @@ public:
        // PROTECCIÓN DE PICOS
        // ------------------------------------------------------------
 
-       // Solo queremos controlar picos claramente superiores
-       // al nivel normal de la voz.
-       //
-       // Permitimos 14 dB por encima del TARGET.
-       constexpr float peakHeadroomDb = 10.0f;
-
-       const auto peakCeilingDb =
-           p.targetDb + peakHeadroomDb;
+       // El umbral PEAK es ahora independiente del TARGET.
+       // No es un limitador True Peak: es el punto a partir del cual
+       // entra en acción la protección rápida de transitorios.
+       const auto peakThresholdDb =
+           std::clamp(p.peakThresholdDb, -18.0f, -1.0f);
 
 
        // Calculamos dónde quedaría el pico después
@@ -310,11 +308,11 @@ public:
 
        // Calculamos una reducción adicional,
        // limitada a un máximo de 9 dB.
-       if (predictedPeakDb > peakCeilingDb)
+       if (predictedPeakDb > peakThresholdDb)
        {
            peakReductionDb =
                std::clamp(
-                   peakCeilingDb - predictedPeakDb,
+                   peakThresholdDb - predictedPeakDb,
                    -9.0f,
                    0.0f);
        }
