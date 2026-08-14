@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
+#include <atomic>
 
 #include "HistoryBuffer.h"
 #include "LevelerEngine.h"
@@ -8,6 +10,8 @@
 class SantosLevelerAudioProcessor final : public juce::AudioProcessor
 {
 public:
+    static constexpr std::size_t spectrumSize = 2048;
+
     SantosLevelerAudioProcessor();
     ~SantosLevelerAudioProcessor() override = default;
 
@@ -42,11 +46,14 @@ public:
     float getInputMeterDb() const noexcept  { return inputMeterDb.load (std::memory_order_relaxed); }
     float getOutputMeterDb() const noexcept { return outputMeterDb.load (std::memory_order_relaxed); }
     float getRiderDb() const noexcept { return riderMeterDb.load (std::memory_order_relaxed); }
+    float getPeakReductionDb() const noexcept { return peakMeterDb.load (std::memory_order_relaxed); }
     bool getRiderActive() const noexcept { return riderActive.load (std::memory_order_relaxed); }
     bool getTransportPlaying() const noexcept { return transportPlaying.load (std::memory_order_relaxed); }
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
+    double getCurrentSampleRateForDisplay() const noexcept { return currentSampleRate; }
 
-private:
+    void copySpectrumInput (std::array<float, spectrumSize>& destination) const noexcept;
+
 private:
     SantosLevelerEngine engine;
     SantosHistoryBuffer history;
@@ -63,9 +70,13 @@ private:
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
     std::atomic<float> riderMeterDb { 0.0f };
+    std::atomic<float> peakMeterDb { 0.0f };
     std::atomic<bool> riderActive { false };
     std::atomic<bool> transportPlaying { true };
     std::atomic<bool> hostTransportKnown { false };
+
+    std::array<float, spectrumSize> spectrumInput {};
+    std::atomic<std::uint32_t> spectrumWriteCount { 0 };
 
     int historyCounter = 0;
     int historyPeriodSamples = 800;
