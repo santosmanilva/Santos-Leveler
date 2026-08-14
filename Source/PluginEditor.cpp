@@ -116,9 +116,10 @@ SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLeve
       outputMeter (p, MeterComponent::Source::output, "OUTPUT LEVEL", green),
       targetAttachment (p.apvts, "target", targetKnob),
       gateAttachment (p.apvts, "gate", gateKnob),
-      speedAttachment (p.apvts, "speed", speedKnob),
-      detectAttachment (p.apvts, "detect", detectKnob),
-      rangeDownAttachment (p.apvts, "rangeDown", rangeDownSlider),
+      speedAttachment(p.apvts, "speed", speedKnob),
+      detectAttachment(p.apvts, "detect", detectKnob),
+      lookaheadAttachment(p.apvts, "lookahead", lookaheadKnob),
+      rangeDownAttachment(p.apvts, "rangeDown", rangeDownSlider),
       rangeUpAttachment (p.apvts, "rangeUp", rangeUpSlider),
       outputAttachment (p.apvts, "output", outputSlider)
 {
@@ -139,6 +140,7 @@ SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLeve
     configureKnob (gateKnob, gateLabel, "GATE", " dB", 1);
     configureKnob (speedKnob, speedLabel, "SPEED", " ms", 0);
     configureKnob (detectKnob, detectLabel, "DETECT", " ms", 0);
+    configureKnob(lookaheadKnob, lookaheadLabel, "LOOKAHEAD", " ms", 0);
 
     configureFader (rangeDownSlider, rangeDownLabel, "RANGE DOWN", " dB", 1, orange);
     configureFader (rangeUpSlider, rangeUpLabel, "RANGE UP", " dB", 1, green);
@@ -229,18 +231,34 @@ void SantosLevelerAudioProcessorEditor::resized()
     subtitleLabel.setBounds (38, 56, 250, 16);
 
     const int knobY = 100;
-    const int knobW = 150;
+    const int knobW = 120;
     const int knobH = 130;
-    const int firstX = 145;
-    const int gap = std::max (12, (w - 2 * firstX - 4 * knobW) / 3);
+    const int firstX = 60;
+    const int gap = std::max(20, (w - 2 * firstX - 5 * knobW) / 4);
 
-    juce::Slider* knobs[] = { &gateKnob, &targetKnob, &speedKnob, &detectKnob };
-    juce::Label* labels[] = { &gateLabel, &targetLabel, &speedLabel, &detectLabel };
-    for (int i = 0; i < 4; ++i)
+    juce::Slider* knobs[] =
+    {
+        &gateKnob,
+        &targetKnob,
+        &speedKnob,
+        &detectKnob,
+        &lookaheadKnob
+    };
+
+    juce::Label* labels[] =
+    {
+        &gateLabel,
+        &targetLabel,
+        &speedLabel,
+        &detectLabel,
+        &lookaheadLabel
+    };
+
+    for (int i = 0; i < 5; ++i)
     {
         const auto x = firstX + i * (knobW + gap);
-        knobs[i]->setBounds (x, knobY, knobW, knobH);
-        labels[i]->setBounds (x, knobY + knobH + 2, knobW, 20);
+        knobs[i]->setBounds(x, knobY, knobW, knobH);
+        labels[i]->setBounds(x, knobY + knobH + 2, knobW, 20);
     }
 
     const int lowerTop = 285;

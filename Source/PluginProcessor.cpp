@@ -7,6 +7,7 @@ constexpr auto paramTarget    = "target";
 constexpr auto paramGate      = "gate";
 constexpr auto paramSpeed     = "speed";
 constexpr auto paramDetect    = "detect";
+constexpr auto paramLookahead = "lookahead";
 constexpr auto paramRangeDown = "rangeDown";
 constexpr auto paramRangeUp   = "rangeUp";
 constexpr auto paramOutput    = "output";
@@ -48,6 +49,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        skewedRange (1.0f, 100.0f, 10.0f, 1.0f), 8.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
 
+    layout.add(std::make_unique<APF>(juce::ParameterID{ paramLookahead, 1 }, "Lookahead",
+                                      juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 30.0f,
+                                      juce::AudioParameterFloatAttributes().withLabel("ms")));
+
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeDown, 1 }, "Range Down",
                                        juce::NormalisableRange<float> (-12.0f, 0.0f, 0.5f), -9.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
@@ -63,14 +68,47 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
     return layout;
 }
 
-void SantosLevelerAudioProcessor::prepareToPlay (double sampleRate, int)
+void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
 {
-    engine.prepare (sampleRate, getTotalNumInputChannels());
+    engine.prepare(sampleRate, getTotalNumInputChannels());
+
+    currentSampleRate = sampleRate;
+
+    // Reserva suficiente memoria para un máximo de 100 ms de Lookahead.
+    maxLookaheadSamples = std::max(
+        0,
+        static_cast<int> (std::ceil(sampleRate * 0.100)));
+
+    lookaheadBufferSize = maxLookaheadSamples + 1;
+
+    lookaheadBuffer.setSize(
+        std::max(1, getTotalNumInputChannels()),
+        lookaheadBufferSize);
+
+    lookaheadBuffer.clear();
+    lookaheadWritePosition = 0;
+
+    const auto lookaheadMs =
+        apvts.getRawParameterValue(paramLookahead)->load();
+
+    currentLookaheadSamples = std::clamp(
+        static_cast<int> (
+            std::round(sampleRate
+                * static_cast<double> (lookaheadMs)
+                * 0.001)),
+        0,
+        maxLookaheadSamples);
+
+    // Comunicamos al DAW la latencia introducida por el Lookahead.
+    setLatencySamples(currentLookaheadSamples);
+
     history.clear();
     historyCounter = 0;
-    historyPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / 60.0)));
-}
 
+    historyPeriodSamples = std::max(
+        1,
+        static_cast<int> (std::round(sampleRate / 60.0)));
+}
 void SantosLevelerAudioProcessor::releaseResources()
 {
 }
@@ -86,7 +124,9 @@ bool SantosLevelerAudioProcessor::isBusesLayoutSupported (const BusesLayout& lay
     return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
 }
 
-void SantosLevelerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void SantosLevelerAudioProcessor::processBlock(
+    juce::AudioBuffer<float>& buffer,
+    juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -94,62 +134,199 @@ void SantosLevelerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const auto numOutputChannels = getTotalNumOutputChannels();
     const auto numSamples = buffer.getNumSamples();
 
-    for (auto ch = numInputChannels; ch < numOutputChannels; ++ch)
-        buffer.clear (ch, 0, numSamples);
+    for (auto ch = numInputChannels;
+        ch < numOutputChannels;
+        ++ch)
+    {
+        buffer.clear(ch, 0, numSamples);
+    }
 
     SantosLevelerEngine::Parameters p;
-    p.targetDb    = apvts.getRawParameterValue (paramTarget)->load();
-    p.gateDb      = apvts.getRawParameterValue (paramGate)->load();
-    p.speedMs     = apvts.getRawParameterValue (paramSpeed)->load();
-    p.detectMs    = apvts.getRawParameterValue (paramDetect)->load();
-    p.rangeDownDb = apvts.getRawParameterValue (paramRangeDown)->load();
-    p.rangeUpDb   = apvts.getRawParameterValue (paramRangeUp)->load();
-    p.outputDb    = apvts.getRawParameterValue (paramOutput)->load();
+
+    p.targetDb =
+        apvts.getRawParameterValue(paramTarget)->load();
+
+    p.gateDb =
+        apvts.getRawParameterValue(paramGate)->load();
+
+    p.speedMs =
+        apvts.getRawParameterValue(paramSpeed)->load();
+
+    p.detectMs =
+        apvts.getRawParameterValue(paramDetect)->load();
+
+    p.rangeDownDb =
+        apvts.getRawParameterValue(paramRangeDown)->load();
+
+    p.rangeUpDb =
+        apvts.getRawParameterValue(paramRangeUp)->load();
+
+    p.outputDb =
+        apvts.getRawParameterValue(paramOutput)->load();
+
+
+    // ------------------------------------------------------------
+    // LOOKAHEAD
+    // ------------------------------------------------------------
+
+    const auto lookaheadMs =
+        apvts.getRawParameterValue(paramLookahead)->load();
+
+    const auto requestedLookaheadSamples = std::clamp(
+        static_cast<int> (
+            std::round(currentSampleRate
+                * static_cast<double> (lookaheadMs)
+                * 0.001)),
+        0,
+        maxLookaheadSamples);
+
+    if (requestedLookaheadSamples != currentLookaheadSamples)
+    {
+        currentLookaheadSamples = requestedLookaheadSamples;
+
+        // Informa al DAW para que actualice la compensación de latencia.
+        setLatencySamples(currentLookaheadSamples);
+    }
+
+
+    // ------------------------------------------------------------
+    // TRANSPORTE
+    // ------------------------------------------------------------
 
     bool playing = true;
     bool transportKnown = false;
-    if (auto* playHead = getPlayHead())
+
+    if (auto* hostPlayHead = getPlayHead())
     {
-        if (auto position = playHead->getPosition())
+        if (auto position = hostPlayHead->getPosition())
         {
             transportKnown = true;
             playing = position->getIsPlaying();
         }
     }
 
-    transportPlaying.store (playing, std::memory_order_relaxed);
-    hostTransportKnown.store (transportKnown, std::memory_order_relaxed);
+    transportPlaying.store(
+        playing,
+        std::memory_order_relaxed);
 
-    auto* left = buffer.getWritePointer (0);
-    auto* right = numInputChannels > 1 ? buffer.getWritePointer (1) : nullptr;
+    hostTransportKnown.store(
+        transportKnown,
+        std::memory_order_relaxed);
+
+
+    // ------------------------------------------------------------
+    // AUDIO
+    // ------------------------------------------------------------
+
+    auto* left =
+        buffer.getWritePointer(0);
+
+    auto* right =
+        numInputChannels > 1
+        ? buffer.getWritePointer(1)
+        : nullptr;
+
+    auto* delayLeft =
+        lookaheadBuffer.getWritePointer(0);
+
+    auto* delayRight =
+        numInputChannels > 1
+        ? lookaheadBuffer.getWritePointer(1)
+        : nullptr;
 
     SantosLevelerEngine::Telemetry telemetry;
 
+
     for (int i = 0; i < numSamples; ++i)
     {
-        float l = left[i];
-        float r = right != nullptr ? right[i] : l;
+        // Señal que ve el detector AHORA.
+        const float detectorL = left[i];
 
-        telemetry = engine.processSample (l, r, p);
+        const float detectorR =
+            right != nullptr
+            ? right[i]
+            : detectorL;
 
-        left[i] = l;
+
+        // Guardamos la señal actual en el buffer circular.
+        delayLeft[lookaheadWritePosition] = detectorL;
+
+        if (delayRight != nullptr)
+            delayRight[lookaheadWritePosition] = detectorR;
+
+
+        // Calculamos qué muestra corresponde al audio retrasado.
+        auto readPosition =
+            lookaheadWritePosition - currentLookaheadSamples;
+
+        if (readPosition < 0)
+            readPosition += lookaheadBufferSize;
+
+
+        // Esta es la señal que realmente llegará a la salida.
+        float delayedL = delayLeft[readPosition];
+
+        float delayedR =
+            delayRight != nullptr
+            ? delayRight[readPosition]
+            : delayedL;
+
+
+        // El detector ve la señal actual.
+        // La ganancia se aplica a la señal retrasada.
+        telemetry = engine.processSampleLookahead(
+            detectorL,
+            detectorR,
+            delayedL,
+            delayedR,
+            p);
+
+
+        left[i] = delayedL;
+
         if (right != nullptr)
-            right[i] = r;
+            right[i] = delayedR;
 
+
+        // Avanzamos el buffer circular.
+        ++lookaheadWritePosition;
+
+        if (lookaheadWritePosition >= lookaheadBufferSize)
+            lookaheadWritePosition = 0;
+
+
+        // History
         if (++historyCounter >= historyPeriodSamples)
         {
             historyCounter = 0;
-            // When the DAW reports transport state, History only advances during Play.
-            // If no host transport exists (e.g. Standalone), it runs continuously.
-            if (! transportKnown || playing)
-                history.push ({ telemetry.inputDb, telemetry.riderDb, telemetry.outputDb });
+
+            if (!transportKnown || playing)
+            {
+                history.push({
+                    telemetry.inputDb,
+                    telemetry.riderDb,
+                    telemetry.outputDb
+                    });
+            }
         }
     }
 
-    inputMeterDb.store (telemetry.inputDb, std::memory_order_relaxed);
-    outputMeterDb.store (telemetry.outputDb, std::memory_order_relaxed);
-    riderMeterDb.store (telemetry.riderDb, std::memory_order_relaxed);
-    riderActive.store (telemetry.riderActive, std::memory_order_relaxed);
+
+    inputMeterDb.store(
+        telemetry.inputDb,
+        std::memory_order_relaxed);
+
+    outputMeterDb.store(
+        telemetry.outputDb,
+        std::memory_order_relaxed);
+
+    riderMeterDb.store(
+        telemetry.riderDb,
+        std::memory_order_relaxed);
+
+    riderActive.store(
+        telemetry.riderActive,
+        std::memory_order_relaxed);
 }
 
 void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
