@@ -12,6 +12,7 @@ const auto cyan      = juce::Colour (0xff55c5e6);
 const auto yellow    = juce::Colour (0xffe8d14b);
 const auto green     = juce::Colour (0xff72d081);
 const auto orange    = juce::Colour (0xffee8a73);
+const auto magenta   = juce::Colour (0xffd57be8);
 
 void styleLabel (juce::Label& label, float size, juce::Colour colour, int justification = juce::Justification::centred)
 {
@@ -284,17 +285,8 @@ void SantosLevelerAudioProcessorEditor::resized()
     {
         const auto x = firstX + i * (knobW + gap);
 
-        knobs[i]->setBounds (
-            x,
-            knobY,
-            knobW,
-            knobH);
-
-        labels[i]->setBounds (
-            x,
-            knobY + knobH + 2,
-            knobW,
-            20);
+        knobs[i]->setBounds (x, knobY, knobW, knobH);
+        labels[i]->setBounds (x, knobY + knobH + 2, knobW, 20);
     }
 
     const int lowerTop = 285;
@@ -383,6 +375,7 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
             const auto norm = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
             return plot.getBottom() - norm * plot.getHeight();
         };
+
         auto riderY = [&] (float db)
         {
             const auto norm = juce::jlimit (0.0f, 1.0f, (db + 12.0f) / 24.0f);
@@ -396,7 +389,10 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
             {
                 const auto x = plot.getX() + plot.getWidth() * static_cast<float> (i) / static_cast<float> (points.size() - 1);
                 const auto y = valueToY (points[i]);
-                if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+                if (i == 0)
+                    p.startNewSubPath (x, y);
+                else
+                    p.lineTo (x, y);
             }
             return p;
         };
@@ -404,19 +400,29 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
         auto inputPath = makePath ([&] (const SantosHistoryPoint& p) { return levelY (p.inputDb); });
         auto outputPath = makePath ([&] (const SantosHistoryPoint& p) { return levelY (p.outputDb); });
         auto riderPath = makePath ([&] (const SantosHistoryPoint& p) { return riderY (p.riderDb); });
+        auto peakPath = makePath ([&] (const SantosHistoryPoint& p) { return riderY (p.peakDb); });
 
         g.setColour (cyan.withAlpha (0.86f));
         g.strokePath (inputPath, juce::PathStrokeType (2.0f));
+
         g.setColour (green.withAlpha (0.92f));
         g.strokePath (outputPath, juce::PathStrokeType (2.0f));
+
         g.setColour (yellow);
         g.strokePath (riderPath, juce::PathStrokeType (2.2f));
+
+        g.setColour (magenta.withAlpha (0.95f));
+        g.strokePath (peakPath, juce::PathStrokeType (1.8f));
     }
 
-    g.setColour (muted);
     g.setFont (juce::FontOptions (9.0f));
+
+    g.setColour (muted);
     g.drawText ("LEVEL dBFS", 4, 2, 70, 14, juce::Justification::centredLeft);
     g.drawText ("RIDER dB", getWidth() - 72, 2, 68, 14, juce::Justification::centredRight);
+
+    g.setColour (magenta);
+    g.drawText ("PEAK", getWidth() / 2 - 28, 2, 56, 14, juce::Justification::centred);
 
     if (processor.hasHostTransport() && ! processor.getTransportPlaying())
     {
