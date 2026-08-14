@@ -9,6 +9,7 @@ struct SantosHistoryPoint
 {
     float inputDb  = -100.0f;
     float riderDb  = 0.0f;
+    float peakDb   = 0.0f;
     float outputDb = -100.0f;
 };
 
