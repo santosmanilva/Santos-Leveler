@@ -25,7 +25,9 @@ struct SantosHistoryPoint
 class SantosHistoryBuffer
 {
 public:
-    static constexpr std::size_t capacity = 4096;
+    // The release UI only displays the latest 320 points. The former 4096-point
+    // buffer existed to support 30/60 second development CSV exports.
+    static constexpr std::size_t capacity = 512;
 
     void clear() noexcept
     {
