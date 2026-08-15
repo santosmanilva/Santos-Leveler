@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <vector>
 
 #include "HistoryBuffer.h"
 #include "LevelerEngine.h"
@@ -47,11 +48,11 @@ public:
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
 
 private:
-private:
     SantosLevelerEngine engine;
     SantosHistoryBuffer history;
 
     juce::AudioBuffer<float> lookaheadBuffer;
+    std::vector<float> historyInputDbBuffer;
 
     double currentSampleRate = 48000.0;
 
