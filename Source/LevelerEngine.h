@@ -159,10 +159,33 @@ public:
                 }
             }
 
+            const auto rawCorrectionDb =
+                std::clamp (errorDb, minCorrectionDb, maxCorrectionDb);
+
+            auto preservedCorrectionDb = rawCorrectionDb;
+
+            // Preserve Dynamics V2 prototype:
+            // A fast rise above the slow phrase envelope is treated as a likely
+            // emphasis/transient. Only downward Rider correction is softened,
+            // leaving sustained loudness to be levelled normally once SLOW catches up.
+            if (detectorActive && rawCorrectionDb < 0.0f)
+            {
+                constexpr float preserveStartDeltaDb = 3.0f;
+                constexpr float preserveFullDeltaDb = 12.0f;
+                constexpr float maxPreserveAmount = 0.35f;
+
+                const auto transientDeltaDb = std::max (0.0f, detectorDeltaDb);
+                const auto preserveStrength = std::clamp (
+                    (transientDeltaDb - preserveStartDeltaDb)
+                        / (preserveFullDeltaDb - preserveStartDeltaDb),
+                    0.0f,
+                    1.0f);
+
+                preservedCorrectionDb *= (1.0f - maxPreserveAmount * preserveStrength);
+            }
+
             const auto newCorrectionDb =
-                detectorActive
-                    ? std::clamp (errorDb, minCorrectionDb, maxCorrectionDb)
-                    : 0.0f;
+                detectorActive ? preservedCorrectionDb : 0.0f;
 
             latestRequestedCorrectionDb = newCorrectionDb;
 
