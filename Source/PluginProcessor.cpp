@@ -180,6 +180,7 @@ void SantosLevelerAudioProcessor::selectABState (bool useB)
 void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
 {
     engine.prepare(sampleRate, getTotalNumInputChannels());
+    truePeakLimiter.prepare(sampleRate, getTotalNumInputChannels());
     currentSampleRate = sampleRate;
 
     maxLookaheadSamples = std::max(0, static_cast<int> (std::ceil(sampleRate * 0.100)));
@@ -194,7 +195,7 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     targetLookaheadSamples = currentLookaheadSamples;
     lookaheadTransitionLengthSamples = std::max(1, static_cast<int> (std::round(sampleRate * 0.008)));
     lookaheadTransitionSamplesRemaining = 0;
-    setLatencySamples(currentLookaheadSamples);
+    setLatencySamples(currentLookaheadSamples + truePeakLimiter.getLatencySamples());
 
     const auto bypassed = apvts.getRawParameterValue(paramBypass)->load() >= 0.5f;
     bypassMix = bypassed ? 1.0f : 0.0f;
@@ -248,7 +249,7 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     {
         targetLookaheadSamples = requestedLookaheadSamples;
         lookaheadTransitionSamplesRemaining = lookaheadTransitionLengthSamples;
-        setLatencySamples(targetLookaheadSamples);
+        setLatencySamples(targetLookaheadSamples + truePeakLimiter.getLatencySamples());
     }
 
     bool playing = true;
@@ -317,12 +318,21 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         telemetry = engine.processSampleLookahead(detectorL, detectorR, delayedL, delayedR, p);
         historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
 
+        float limitedWetL = 0.0f;
+        float limitedWetR = 0.0f;
+        float limiterDryL = 0.0f;
+        float limiterDryR = 0.0f;
+        truePeakLimiter.process(delayedL, delayedR,
+                                dryL, dryR,
+                                limitedWetL, limitedWetR,
+                                limiterDryL, limiterDryR);
+
         bypassMix += bypassSmoothingAlpha * (bypassTarget - bypassMix);
         const auto wetMix = 1.0f - bypassMix;
 
-        left[i] = delayedL * wetMix + dryL * bypassMix;
+        left[i] = limitedWetL * wetMix + limiterDryL * bypassMix;
         if (right != nullptr)
-            right[i] = delayedR * wetMix + dryR * bypassMix;
+            right[i] = limitedWetR * wetMix + limiterDryR * bypassMix;
 
         if (lookaheadTransitionSamplesRemaining > 0)
         {
