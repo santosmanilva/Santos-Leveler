@@ -52,8 +52,10 @@ private:
     };
 
     void timerCallback() override;
-    void configureKnob (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& suffix, int decimals);
-    void configureFader (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& suffix, int decimals, juce::Colour accent);
+    void configureKnob (juce::Slider&, juce::Label&, const juce::String& name,
+                        const juce::String& suffix, int decimals, juce::Colour accent);
+    void configureFader (juce::Slider&, juce::Label&, const juce::String& name,
+                         const juce::String& suffix, int decimals, juce::Colour accent);
 
     SantosLevelerAudioProcessor& processor;
     SantosLookAndFeel lookAndFeel;
@@ -63,9 +65,7 @@ private:
 
     juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel, peakThresholdLabel;
     juce::Label rangeDownLabel, rangeUpLabel, outputLabel;
-
-    juce::Label titleLabel, subtitleLabel, historyLabel;
-    juce::Label inputLegendLabel, riderLegendLabel, outputLegendLabel;
+    juce::Label titleLabel, subtitleLabel;
 
     HistoryComponent history;
     MeterComponent inputMeter;
