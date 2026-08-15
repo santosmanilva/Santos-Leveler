@@ -125,9 +125,6 @@ public:
             const auto minCorrectionDb = std::clamp (p.rangeDownDb, -12.0f, 0.0f);
             const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 12.0f);
 
-            // Smart Gate: the knob remains the OPEN threshold. Once active, the
-            // detector must fall 3 dB below it before a close is even considered.
-            // A short grace period then ignores tiny gaps between syllables/words.
             const auto gateOpenDb = std::clamp (p.gateDb, -70.0f, -25.0f);
             const auto gateCloseDb = std::max (-100.0f, gateOpenDb - 3.0f);
             constexpr float gateCloseGraceMs = 80.0f;
@@ -164,10 +161,6 @@ public:
 
             auto preservedCorrectionDb = rawCorrectionDb;
 
-            // Preserve Dynamics V2 prototype:
-            // A fast rise above the slow phrase envelope is treated as a likely
-            // emphasis/transient. Only downward Rider correction is softened,
-            // leaving sustained loudness to be levelled normally once SLOW catches up.
             if (detectorActive && rawCorrectionDb < 0.0f)
             {
                 constexpr float preserveStartDeltaDb = 3.0f;
@@ -277,9 +270,18 @@ public:
         const auto targetPeakGain = dbToGain (peakReductionDb);
         const bool needsPeakReduction = targetPeakGain < currentPeakGain;
 
+        constexpr float peakAttackMs = 1.0f;
+        constexpr float peakReleaseFastMs = 70.0f;
+        constexpr float peakReleaseSlowMs = 160.0f;
+
+        const auto appliedPeakReductionDb = std::max (0.0f, -gainToDb (currentPeakGain));
+        const auto peakReleaseDepth = std::clamp (appliedPeakReductionDb / 9.0f, 0.0f, 1.0f);
+        const auto adaptivePeakReleaseMs =
+            peakReleaseFastMs + (peakReleaseSlowMs - peakReleaseFastMs) * peakReleaseDepth;
+
         const auto peakAlpha =
-            needsPeakReduction ? timeConstantAlpha (1.0f)
-                               : timeConstantAlpha (100.0f);
+            needsPeakReduction ? timeConstantAlpha (peakAttackMs)
+                               : timeConstantAlpha (adaptivePeakReleaseMs);
 
         currentPeakGain += peakAlpha * (targetPeakGain - currentPeakGain);
 
