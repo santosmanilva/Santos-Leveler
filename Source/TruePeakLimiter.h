@@ -57,8 +57,7 @@ public:
         const auto truePeak = detectTruePeak (wetL, wetR);
         latestTruePeakLinear = truePeak;
 
-        constexpr float ceilingDbTP = -1.0f;
-        constexpr float ceilingLinear = 0.891250938f;
+        constexpr float ceilingLinear = 0.891250938f; // -1.0 dBTP
 
         const auto requiredGain = truePeak > ceilingLinear
             ? std::clamp (ceilingLinear / std::max (truePeak, 1.0e-9f), 0.0f, 1.0f)
