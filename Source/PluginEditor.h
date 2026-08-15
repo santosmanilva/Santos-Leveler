@@ -69,6 +69,7 @@ private:
     juce::Label rangeDownLabel, rangeUpLabel, outputLabel;
     juce::Label titleLabel, subtitleLabel;
 
+    juce::TextButton bypassButton;
     juce::TextButton export30Button;
     juce::TextButton export60Button;
     std::unique_ptr<juce::FileChooser> exportFileChooser;
@@ -88,6 +89,7 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment rangeDownAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment rangeUpAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment outputAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SantosLevelerAudioProcessorEditor)
 };
