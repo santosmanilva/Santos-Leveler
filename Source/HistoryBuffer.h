@@ -11,6 +11,7 @@ struct SantosHistoryPoint
     float fastDb = -100.0f;
     float slowDb = -100.0f;
     float controlDb = -100.0f;
+    float rawRiderDb = 0.0f;
     float requestedRiderDb = 0.0f;
     float effectiveRiderDb = 0.0f;
     float riderDb = 0.0f;
