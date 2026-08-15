@@ -112,6 +112,19 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     bypassSmoothingAlpha = static_cast<float> (
         1.0 - std::exp(-1.0 / (bypassSmoothingSeconds * std::max(1.0, sampleRate))));
 
+    gainMatchDryPower = 0.0f;
+    gainMatchWetPower = 0.0f;
+    gainMatchGain = 1.0f;
+    gainMatchTargetGain = 1.0f;
+
+    const auto gainMatchPowerSeconds = 0.750;
+    gainMatchPowerAlpha = static_cast<float> (
+        1.0 - std::exp(-1.0 / (gainMatchPowerSeconds * std::max(1.0, sampleRate))));
+
+    const auto gainMatchGainSeconds = 0.250;
+    gainMatchGainAlpha = static_cast<float> (
+        1.0 - std::exp(-1.0 / (gainMatchGainSeconds * std::max(1.0, sampleRate))));
+
     history.clear();
     historyCounter = 0;
     historyPeriodSamples = std::max(1, static_cast<int> (std::round(sampleRate / 60.0)));
@@ -227,12 +240,37 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         telemetry = engine.processSampleLookahead(detectorL, detectorR, delayedL, delayedR, p);
         historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
 
+        const auto dryPower = numInputChannels > 1
+            ? 0.5f * (dryL * dryL + dryR * dryR)
+            : dryL * dryL;
+        const auto wetPower = numInputChannels > 1
+            ? 0.5f * (delayedL * delayedL + delayedR * delayedR)
+            : delayedL * delayedL;
+
+        gainMatchDryPower += gainMatchPowerAlpha * (dryPower - gainMatchDryPower);
+        gainMatchWetPower += gainMatchPowerAlpha * (wetPower - gainMatchWetPower);
+
+        constexpr float gainMatchMinPower = 3.16227766e-6f; // -55 dBFS RMS
+        if (telemetry.gateActive
+            && gainMatchDryPower > gainMatchMinPower
+            && gainMatchWetPower > gainMatchMinPower)
+        {
+            const auto gainRatio = std::sqrt(gainMatchWetPower / gainMatchDryPower);
+            const auto gainRatioDb = 20.0f * std::log10(std::max(gainRatio, 1.0e-6f));
+            const auto safeGainMatchDb = std::clamp(gainRatioDb, -12.0f, 12.0f);
+            gainMatchTargetGain = std::pow(10.0f, safeGainMatchDb / 20.0f);
+        }
+
+        gainMatchGain += gainMatchGainAlpha * (gainMatchTargetGain - gainMatchGain);
+
         bypassMix += bypassSmoothingAlpha * (bypassTarget - bypassMix);
         const auto wetMix = 1.0f - bypassMix;
+        const auto matchedDryL = dryL * gainMatchGain;
+        const auto matchedDryR = dryR * gainMatchGain;
 
-        left[i] = delayedL * wetMix + dryL * bypassMix;
+        left[i] = delayedL * wetMix + matchedDryL * bypassMix;
         if (right != nullptr)
-            right[i] = delayedR * wetMix + dryR * bypassMix;
+            right[i] = delayedR * wetMix + matchedDryR * bypassMix;
 
         if (lookaheadTransitionSamplesRemaining > 0)
         {
