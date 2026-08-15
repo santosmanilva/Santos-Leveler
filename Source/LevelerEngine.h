@@ -36,15 +36,21 @@ public:
     {
         sampleRate = std::max (1.0, newSampleRate);
         numChannels = std::clamp (newNumChannels, 1, 2);
-        inputDetector.prepare (sampleRate, 100.0);
+
+        // Two independent voice detectors:
+        // FAST follows syllables and level changes; SLOW represents the phrase body.
+        inputFastDetector.prepare (sampleRate, 100.0);
+        inputSlowDetector.prepare (sampleRate, 300.0);
         outputDetector.prepare (sampleRate, 100.0);
+
         controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / 240.0)));
         reset();
     }
 
     void reset()
     {
-        inputDetector.reset();
+        inputFastDetector.reset();
+        inputSlowDetector.reset();
         outputDetector.reset();
         controlCountdown = 0;
         currentRiderGain = 1.0f;
@@ -76,12 +82,36 @@ public:
                                       float& right,
                                       const Parameters& p)
     {
-        const auto detectMs = std::clamp (p.detectMs, 1.0f, 100.0f);
-        inputDetector.setWindowMs (detectMs);
-        outputDetector.setWindowMs (detectMs);
+        const auto fastDetectMs = std::clamp (p.detectMs, 1.0f, 100.0f);
 
-        const auto inputRms = inputDetector.process (detectorLeft, detectorRight, numChannels);
-        const auto inputDb = gainToDb (inputRms);
+        // The existing DETECT control remains the FAST detector time. The SLOW
+        // detector is derived automatically so no new user parameter is needed.
+        // At the current preferred DETECT=8 ms this gives a 96 ms phrase window.
+        const auto slowDetectMs = std::clamp (fastDetectMs * 12.0f, 70.0f, 250.0f);
+
+        inputFastDetector.setWindowMs (fastDetectMs);
+        inputSlowDetector.setWindowMs (slowDetectMs);
+        outputDetector.setWindowMs (fastDetectMs);
+
+        const auto fastRms = inputFastDetector.process (detectorLeft, detectorRight, numChannels);
+        const auto slowRms = inputSlowDetector.process (detectorLeft, detectorRight, numChannels);
+
+        const auto fastDb = gainToDb (fastRms);
+        const auto slowDb = gainToDb (slowRms);
+
+        // Adaptive FAST/SLOW blend.
+        //
+        // When a syllable suddenly gets louder, trust FAST strongly so the Rider
+        // stops boosting (or starts reducing) without waiting for the phrase RMS.
+        // When a syllable suddenly gets quieter, trust SLOW more heavily so short
+        // gaps, consonant tails and natural articulation are not immediately boosted.
+        // This is intentionally asymmetric: protection is fast, recovery is calm.
+        const auto detectorDeltaDb = fastDb - slowDb;
+        const auto fastWeight = detectorDeltaDb >= 0.0f ? 0.78f : 0.22f;
+        const auto controlInputDb = slowDb + detectorDeltaDb * fastWeight;
+
+        // Keep INPUT telemetry representative of what the Rider is actually using.
+        const auto inputDb = controlInputDb;
 
         const auto instantaneousPeak =
             numChannels > 1
@@ -97,11 +127,11 @@ public:
 
         if (controlCountdown <= 0)
         {
-            const auto errorDb = p.targetDb - inputDb;
+            const auto errorDb = p.targetDb - controlInputDb;
             const auto minCorrectionDb = std::clamp (p.rangeDownDb, -12.0f, 0.0f);
             const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 12.0f);
 
-            detectorActive = inputDb > p.gateDb;
+            detectorActive = controlInputDb > p.gateDb;
 
             const auto newCorrectionDb =
                 detectorActive
@@ -343,7 +373,8 @@ private:
     float peakEnvelopeDb = -100.0f;
     float peakReductionDb = 0.0f;
     float currentPeakGain = 1.0f;
-    SlidingRms inputDetector;
+    SlidingRms inputFastDetector;
+    SlidingRms inputSlowDetector;
     SlidingRms outputDetector;
     Telemetry lastTelemetry;
 };
