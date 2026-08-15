@@ -5,9 +5,9 @@ namespace
 const auto bg        = juce::Colour (0xff05090c);
 const auto frame     = juce::Colour (0xff10171d);
 const auto panel     = juce::Colour (0xff11191f);
-const auto panel2    = juce::Colour (0xff0a1014);
+const auto panel2    = juce::Colour (0xff090e12);
 const auto border    = juce::Colour (0xff3b4851);
-const auto borderHi  = juce::Colour (0xff66737b);
+const auto borderHi  = juce::Colour (0xff75838c);
 const auto text      = juce::Colour (0xffeef3f5);
 const auto muted     = juce::Colour (0xff89969e);
 const auto cyan      = juce::Colour (0xff18c9f4);
@@ -27,16 +27,20 @@ void styleLabel (juce::Label& label, float size, juce::Colour colour,
 
 void drawInsetPanel (juce::Graphics& g, juce::Rectangle<float> r, float radius = 7.0f)
 {
-    juce::ColourGradient grad (juce::Colour (0xff151d22), r.getTopLeft(),
-                               juce::Colour (0xff090e12), r.getBottomRight(), false);
+    g.setColour (juce::Colours::black.withAlpha (0.56f));
+    g.fillRoundedRectangle (r.translated (0.0f, 2.0f), radius);
+
+    juce::ColourGradient grad (juce::Colour (0xff172027), r.getTopLeft(),
+                               juce::Colour (0xff080d10), r.getBottomRight(), false);
+    grad.addColour (0.52, juce::Colour (0xff10171c));
     g.setGradientFill (grad);
     g.fillRoundedRectangle (r, radius);
-    g.setColour (juce::Colours::black.withAlpha (0.72f));
-    g.drawRoundedRectangle (r.translated (0.0f, 1.0f), radius, 2.0f);
+
     g.setColour (border.withAlpha (0.95f));
     g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.055f));
-    g.drawLine (r.getX() + radius, r.getY() + 1.0f, r.getRight() - radius, r.getY() + 1.0f, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.06f));
+    g.drawLine (r.getX() + radius, r.getY() + 1.0f,
+                r.getRight() - radius, r.getY() + 1.0f, 1.0f);
 }
 
 float getParam (SantosLevelerAudioProcessor& p, const char* id)
@@ -45,13 +49,22 @@ float getParam (SantosLevelerAudioProcessor& p, const char* id)
         return v->load();
     return 0.0f;
 }
+
+juce::Colour meterColourForNorm (juce::Colour base, float norm)
+{
+    if (norm > 0.93f)
+        return juce::Colour (0xffff5c61);
+    if (norm > 0.82f)
+        return juce::Colour (0xffffcf43);
+    return base;
+}
 }
 
 SantosLevelerAudioProcessorEditor::SantosLookAndFeel::SantosLookAndFeel()
 {
     setColour (juce::Slider::textBoxTextColourId, text);
-    setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff0a0f13));
-    setColour (juce::Slider::textBoxOutlineColourId, border.withAlpha (0.9f));
+    setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff090e12));
+    setColour (juce::Slider::textBoxOutlineColourId, border.withAlpha (0.90f));
     setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colour (0xff28333a));
     setColour (juce::Slider::trackColourId, juce::Colour (0xff222d33));
 }
@@ -60,55 +73,92 @@ void SantosLevelerAudioProcessorEditor::SantosLookAndFeel::drawRotarySlider (
     juce::Graphics& g, int x, int y, int width, int height,
     float sliderPos, float rotaryStartAngle, float rotaryEndAngle, juce::Slider& slider)
 {
-    auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (8.0f);
-    const auto radius = juce::jmax (10.0f, juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.45f);
-    const auto centre = bounds.getCentre();
+    auto b = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (7.0f);
+    const auto radius = juce::jmax (11.0f, juce::jmin (b.getWidth(), b.getHeight()) * 0.43f);
+    const auto c = b.getCentre();
     const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
     const auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-    g.setColour (juce::Colours::black.withAlpha (0.58f));
-    g.fillEllipse (juce::Rectangle<float> (radius * 1.92f, radius * 1.92f).withCentre (centre).translated (0.0f, 3.0f));
+    // Soft outer glow + deep shadow.
+    g.setColour (accent.withAlpha (0.045f));
+    g.fillEllipse (juce::Rectangle<float> (radius * 2.28f, radius * 2.28f).withCentre (c));
+    g.setColour (juce::Colours::black.withAlpha (0.72f));
+    g.fillEllipse (juce::Rectangle<float> (radius * 1.95f, radius * 1.95f).withCentre (c).translated (0.0f, 3.0f));
 
-    juce::ColourGradient metal (juce::Colour (0xff536068), centre.x - radius, centre.y - radius,
-                                juce::Colour (0xff0a0f12), centre.x + radius, centre.y + radius, false);
-    metal.addColour (0.34, juce::Colour (0xff202b31));
-    metal.addColour (0.60, juce::Colour (0xff05090b));
-    g.setGradientFill (metal);
-    g.fillEllipse (juce::Rectangle<float> (radius * 1.58f, radius * 1.58f).withCentre (centre));
+    // Outer metal bezel.
+    auto bezel = juce::Rectangle<float> (radius * 1.82f, radius * 1.82f).withCentre (c);
+    juce::ColourGradient bezelGrad (juce::Colour (0xff77838a), bezel.getTopLeft(),
+                                    juce::Colour (0xff10161a), bezel.getBottomRight(), false);
+    bezelGrad.addColour (0.30, juce::Colour (0xff39454c));
+    bezelGrad.addColour (0.58, juce::Colour (0xff151d21));
+    bezelGrad.addColour (0.82, juce::Colour (0xff06090b));
+    g.setGradientFill (bezelGrad);
+    g.fillEllipse (bezel);
+    g.setColour (juce::Colours::black.withAlpha (0.82f));
+    g.drawEllipse (bezel, 1.2f);
+    g.setColour (juce::Colours::white.withAlpha (0.11f));
+    g.drawEllipse (bezel.reduced (1.2f), 0.8f);
 
-    g.setColour (borderHi.withAlpha (0.75f));
-    g.drawEllipse (juce::Rectangle<float> (radius * 1.58f, radius * 1.58f).withCentre (centre), 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.10f));
-    g.drawEllipse (juce::Rectangle<float> (radius * 1.40f, radius * 1.40f).withCentre (centre).translated (-1.0f, -1.0f), 1.0f);
+    // Inner knob body.
+    auto body = juce::Rectangle<float> (radius * 1.42f, radius * 1.42f).withCentre (c);
+    juce::ColourGradient bodyGrad (juce::Colour (0xff4a555b), body.getTopLeft(),
+                                   juce::Colour (0xff05080a), body.getBottomRight(), false);
+    bodyGrad.addColour (0.38, juce::Colour (0xff20292e));
+    bodyGrad.addColour (0.66, juce::Colour (0xff0c1114));
+    g.setGradientFill (bodyGrad);
+    g.fillEllipse (body);
+    g.setColour (juce::Colour (0xff050708));
+    g.drawEllipse (body, 1.3f);
 
-    const auto arcRadius = radius * 0.96f;
-    const auto tickOuter = radius * 1.11f;
-    for (int i = 0; i <= 18; ++i)
+    // Tick ring, with active ticks glowing like the approved render.
+    const auto tickInner = radius * 0.98f;
+    const auto tickOuter = radius * 1.14f;
+    constexpr int tickCount = 25;
+    for (int i = 0; i < tickCount; ++i)
     {
-        const auto a = rotaryStartAngle + (rotaryEndAngle - rotaryStartAngle) * (float) i / 18.0f;
-        const auto p1 = centre + juce::Point<float> (std::sin (a), -std::cos (a)) * arcRadius;
-        const auto p2 = centre + juce::Point<float> (std::sin (a), -std::cos (a)) * tickOuter;
-        const bool active = (float) i / 18.0f <= sliderPos;
-        g.setColour ((active ? accent : juce::Colour (0xff3b464c)).withAlpha (active ? 0.95f : 0.75f));
-        g.drawLine ({ p1, p2 }, i % 3 == 0 ? 1.7f : 1.0f);
+        const auto frac = (float) i / (float) (tickCount - 1);
+        const auto a = rotaryStartAngle + (rotaryEndAngle - rotaryStartAngle) * frac;
+        const auto p1 = c + juce::Point<float> (std::sin (a), -std::cos (a)) * tickInner;
+        const auto p2 = c + juce::Point<float> (std::sin (a), -std::cos (a)) * tickOuter;
+        const bool active = frac <= sliderPos + 0.001f;
+        const auto col = active ? accent : juce::Colour (0xff354149);
+
+        if (active && i % 2 == 0)
+        {
+            g.setColour (accent.withAlpha (0.14f));
+            g.drawLine ({ p1, p2 }, 4.0f);
+        }
+
+        g.setColour (col.withAlpha (active ? 0.98f : 0.72f));
+        g.drawLine ({ p1, p2 }, i % 4 == 0 ? 1.8f : 1.05f);
     }
 
+    // Value arc.
     juce::Path arc;
-    arc.addCentredArc (centre.x, centre.y, radius * 0.86f, radius * 0.86f, 0.0f,
+    arc.addCentredArc (c.x, c.y, radius * 0.88f, radius * 0.88f, 0.0f,
                        rotaryStartAngle, angle, true);
-    g.setColour (accent.withAlpha (0.13f));
-    g.strokePath (arc, juce::PathStrokeType (7.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (accent.withAlpha (0.14f));
+    g.strokePath (arc, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (accent);
-    g.strokePath (arc, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.strokePath (arc, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
+    // Pointer with small luminous cap.
     juce::Path pointer;
-    pointer.addRoundedRectangle (-1.2f, -radius * 0.59f, 2.4f, radius * 0.38f, 1.2f);
-    pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
+    pointer.addRoundedRectangle (-1.45f, -radius * 0.61f, 2.9f, radius * 0.40f, 1.4f);
+    pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (c.x, c.y));
+    g.setColour (juce::Colours::black.withAlpha (0.65f));
+    g.fillPath (pointer, juce::AffineTransform::translation (1.0f, 1.0f));
     g.setColour (text);
     g.fillPath (pointer);
 
-    g.setColour (juce::Colours::white.withAlpha (0.18f));
-    g.fillEllipse (centre.x - radius * 0.28f, centre.y - radius * 0.28f, radius * 0.56f, radius * 0.28f);
+    g.setColour (accent.withAlpha (0.80f));
+    g.fillEllipse (c.x - 2.1f, c.y - 2.1f, 4.2f, 4.2f);
+
+    // Brushed-metal highlight.
+    juce::ColourGradient highlight (juce::Colours::white.withAlpha (0.20f), c.x - radius * 0.35f, c.y - radius * 0.46f,
+                                    juce::Colours::transparentWhite, c.x + radius * 0.15f, c.y + radius * 0.24f, false);
+    g.setGradientFill (highlight);
+    g.fillEllipse (body.reduced (radius * 0.10f).withHeight (body.getHeight() * 0.46f));
 }
 
 void SantosLevelerAudioProcessorEditor::SantosLookAndFeel::drawLinearSlider (
@@ -122,15 +172,15 @@ void SantosLevelerAudioProcessorEditor::SantosLookAndFeel::drawLinearSlider (
     }
 
     const auto accent = slider.findColour (juce::Slider::thumbColourId);
-    auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (9.0f, 9.0f);
+    auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (10.0f, 9.0f);
     const auto cy = area.getCentreY();
     const auto left = area.getX();
     const auto right = area.getRight();
 
-    g.setColour (juce::Colours::black.withAlpha (0.65f));
-    g.fillRoundedRectangle (left, cy - 7.0f, right - left, 14.0f, 7.0f);
-    g.setColour (juce::Colour (0xff303a40));
-    g.drawRoundedRectangle ({ left, cy - 7.0f, right - left, 14.0f }, 7.0f, 1.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.70f));
+    g.fillRoundedRectangle (left, cy - 7.5f, right - left, 15.0f, 7.5f);
+    g.setColour (juce::Colour (0xff38444b));
+    g.drawRoundedRectangle ({ left, cy - 7.5f, right - left, 15.0f }, 7.5f, 1.0f);
 
     const auto min = slider.getMinimum();
     const auto max = slider.getMaximum();
@@ -140,19 +190,22 @@ void SantosLevelerAudioProcessorEditor::SantosLookAndFeel::drawLinearSlider (
 
     const auto a = juce::jmin (sliderPos, zeroX);
     const auto b = juce::jmax (sliderPos, zeroX);
-    g.setColour (accent.withAlpha (0.18f));
+    g.setColour (accent.withAlpha (0.16f));
     g.fillRoundedRectangle (a, cy - 5.0f, juce::jmax (2.0f, b - a), 10.0f, 5.0f);
+    g.setColour (accent.withAlpha (0.38f));
+    g.fillRoundedRectangle (a, cy - 3.0f, juce::jmax (2.0f, b - a), 6.0f, 3.0f);
     g.setColour (accent);
-    g.fillRoundedRectangle (a, cy - 2.0f, juce::jmax (2.0f, b - a), 4.0f, 2.0f);
+    g.fillRoundedRectangle (a, cy - 1.5f, juce::jmax (2.0f, b - a), 3.0f, 1.5f);
 
-    juce::ColourGradient knob (juce::Colour (0xffd9dde0), sliderPos - 7.0f, cy - 10.0f,
-                               juce::Colour (0xff252c30), sliderPos + 7.0f, cy + 10.0f, false);
-    g.setGradientFill (knob);
-    g.fillRoundedRectangle (sliderPos - 7.0f, cy - 10.0f, 14.0f, 20.0f, 3.0f);
-    g.setColour (juce::Colours::black.withAlpha (0.75f));
-    g.drawRoundedRectangle ({ sliderPos - 7.0f, cy - 10.0f, 14.0f, 20.0f }, 3.0f, 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.35f));
-    g.drawVerticalLine ((int) sliderPos, cy - 7.0f, cy + 7.0f);
+    juce::ColourGradient thumbGrad (juce::Colour (0xffe7ecef), sliderPos - 8.0f, cy - 11.0f,
+                                    juce::Colour (0xff232a2e), sliderPos + 8.0f, cy + 11.0f, false);
+    thumbGrad.addColour (0.48, juce::Colour (0xff8d969b));
+    g.setGradientFill (thumbGrad);
+    g.fillRoundedRectangle (sliderPos - 7.5f, cy - 11.0f, 15.0f, 22.0f, 3.2f);
+    g.setColour (juce::Colours::black.withAlpha (0.82f));
+    g.drawRoundedRectangle ({ sliderPos - 7.5f, cy - 11.0f, 15.0f, 22.0f }, 3.2f, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.45f));
+    g.drawVerticalLine ((int) sliderPos, cy - 8.0f, cy + 8.0f);
 }
 
 SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLevelerAudioProcessor& p)
@@ -248,15 +301,18 @@ void SantosLevelerAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (bg);
 
-    auto outer = getLocalBounds().toFloat().reduced (5.0f);
-    juce::ColourGradient frameGrad (juce::Colour (0xff233039), outer.getTopLeft(),
-                                    juce::Colour (0xff060a0d), outer.getBottomRight(), false);
+    auto outer = getLocalBounds().toFloat().reduced (4.0f);
+    juce::ColourGradient frameGrad (juce::Colour (0xff33424b), outer.getTopLeft(),
+                                    juce::Colour (0xff05080a), outer.getBottomRight(), false);
+    frameGrad.addColour (0.38, juce::Colour (0xff182329));
     g.setGradientFill (frameGrad);
-    g.fillRoundedRectangle (outer, 12.0f);
-    g.setColour (juce::Colour (0xff6b7880));
-    g.drawRoundedRectangle (outer.reduced (0.5f), 12.0f, 1.0f);
-    g.setColour (juce::Colours::black.withAlpha (0.75f));
-    g.drawRoundedRectangle (outer.reduced (3.0f), 10.0f, 2.0f);
+    g.fillRoundedRectangle (outer, 13.0f);
+    g.setColour (juce::Colour (0xff7b8991));
+    g.drawRoundedRectangle (outer.reduced (0.5f), 13.0f, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.06f));
+    g.drawRoundedRectangle (outer.reduced (2.2f), 11.0f, 0.8f);
+    g.setColour (juce::Colours::black.withAlpha (0.80f));
+    g.drawRoundedRectangle (outer.reduced (4.2f), 9.0f, 2.0f);
 
     auto inner = outer.reduced (7.0f);
     g.setColour (frame);
@@ -266,47 +322,62 @@ void SantosLevelerAudioProcessorEditor::paint (juce::Graphics& g)
     const float sx = (float) getWidth() / 1200.0f;
     const auto S = juce::jmin (sx, sy);
 
-    auto header = juce::Rectangle<float> (14.0f * sx, 14.0f * sy, (float) getWidth() - 28.0f * sx, 58.0f * sy);
-    juce::ColourGradient headGrad (juce::Colour (0xff11191f), header.getTopLeft(), juce::Colour (0xff070b0e), header.getBottomRight(), false);
+    auto header = juce::Rectangle<float> (14.0f * sx, 14.0f * sy,
+                                          (float) getWidth() - 28.0f * sx, 58.0f * sy);
+    juce::ColourGradient headGrad (juce::Colour (0xff121b21), header.getTopLeft(),
+                                   juce::Colour (0xff060a0d), header.getBottomRight(), false);
     g.setGradientFill (headGrad);
     g.fillRoundedRectangle (header, 5.0f * S);
-    g.setColour (border.withAlpha (0.8f));
+    g.setColour (border.withAlpha (0.88f));
     g.drawRoundedRectangle (header, 5.0f * S, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.04f));
+    g.drawLine (header.getX() + 6.0f, header.getY() + 1.0f,
+                header.getRight() - 6.0f, header.getY() + 1.0f, 1.0f);
 
-    auto ride = juce::Rectangle<float> ((float) getWidth() * 0.315f, 23.0f * sy, 150.0f * sx, 34.0f * sy);
-    g.setColour ((processor.getRiderActive() ? green : juce::Colour (0xff24402f)).withAlpha (0.22f));
+    auto ride = juce::Rectangle<float> ((float) getWidth() * 0.315f,
+                                        23.0f * sy, 150.0f * sx, 34.0f * sy);
+    const auto active = processor.getRiderActive();
+    g.setColour ((active ? green : juce::Colour (0xff263239)).withAlpha (0.24f));
     g.fillRoundedRectangle (ride, 4.0f * S);
-    g.setColour ((processor.getRiderActive() ? green : muted).withAlpha (0.65f));
+    g.setColour ((active ? green : muted).withAlpha (0.70f));
     g.drawRoundedRectangle (ride, 4.0f * S, 1.0f);
     g.setFont (juce::FontOptions (12.0f * S));
-    g.setColour (processor.getRiderActive() ? green : muted);
-    g.drawText (processor.getRiderActive() ? "AUTO RIDING" : "IDLE", ride.toNearestInt().withTrimmedRight ((int) (27 * sx)), juce::Justification::centred);
+    g.setColour (active ? green : muted);
+    g.drawText (active ? "AUTO RIDING" : "IDLE",
+                ride.toNearestInt().withTrimmedRight ((int) (27 * sx)), juce::Justification::centred);
     g.fillEllipse (ride.getRight() - 22.0f * sx, ride.getCentreY() - 4.0f * S, 8.0f * S, 8.0f * S);
 
-    auto badge = juce::Rectangle<float> ((float) getWidth() * 0.53f, 23.0f * sy, 184.0f * sx, 34.0f * sy);
+    auto badge = juce::Rectangle<float> ((float) getWidth() * 0.53f,
+                                         23.0f * sy, 184.0f * sx, 34.0f * sy);
     drawInsetPanel (g, badge, 4.0f * S);
     g.setColour (muted);
     g.setFont (juce::FontOptions (9.0f * S));
     g.drawText ("CLASSIC STUDIO", badge.toNearestInt(), juce::Justification::centred);
 
-    auto motion = juce::Rectangle<float> ((float) getWidth() * 0.77f, 23.0f * sy, 112.0f * sx, 34.0f * sy);
+    auto motion = juce::Rectangle<float> ((float) getWidth() * 0.77f,
+                                          23.0f * sy, 112.0f * sx, 34.0f * sy);
     drawInsetPanel (g, motion, 4.0f * S);
     g.setColour (muted);
     g.drawText ("MOTION  FULL", motion.toNearestInt(), juce::Justification::centred);
 
-    auto knobPanel = juce::Rectangle<float> (16.0f * sx, 502.0f * sy, (float) getWidth() - 32.0f * sx, 150.0f * sy);
+    auto knobPanel = juce::Rectangle<float> (16.0f * sx, 502.0f * sy,
+                                             (float) getWidth() - 32.0f * sx, 150.0f * sy);
     drawInsetPanel (g, knobPanel, 7.0f * S);
 
-    auto faderPanel = juce::Rectangle<float> (16.0f * sx, 660.0f * sy, (float) getWidth() - 32.0f * sx, 102.0f * sy);
+    auto faderPanel = juce::Rectangle<float> (16.0f * sx, 660.0f * sy,
+                                              (float) getWidth() - 32.0f * sx, 102.0f * sy);
     drawInsetPanel (g, faderPanel, 7.0f * S);
 
-    g.setColour (muted.withAlpha (0.78f));
-    g.setFont (juce::FontOptions (8.3f * S));
-    g.drawText ("SANTOS LEVELER v1.0.0", (int) (24 * sx), (int) (772 * sy), (int) (160 * sx), (int) (16 * sy), juce::Justification::centredLeft);
-    g.setColour (cyan.withAlpha (0.82f));
-    g.drawText ("AUTO LEVEL RIDER TECHNOLOGY", (int) (220 * sx), (int) (772 * sy), (int) (210 * sx), (int) (16 * sy), juce::Justification::centredLeft);
-    g.setColour (muted.withAlpha (0.78f));
-    g.drawText ("DESIGNED & DEVELOPED BY SANTOS", (int) (930 * sx), (int) (772 * sy), (int) (240 * sx), (int) (16 * sy), juce::Justification::centredRight);
+    g.setColour (muted.withAlpha (0.72f));
+    g.setFont (juce::FontOptions (8.0f * S));
+    g.drawText ("SANTOS LEVELER v1.0.0", (int) (24 * sx), (int) (772 * sy),
+                (int) (160 * sx), (int) (16 * sy), juce::Justification::centredLeft);
+    g.setColour (cyan.withAlpha (0.85f));
+    g.drawText ("AUTO LEVEL RIDER TECHNOLOGY", (int) (220 * sx), (int) (772 * sy),
+                (int) (220 * sx), (int) (16 * sy), juce::Justification::centredLeft);
+    g.setColour (muted.withAlpha (0.72f));
+    g.drawText ("DESIGNED & DEVELOPED BY SANTOS", (int) (925 * sx), (int) (772 * sy),
+                (int) (245 * sx), (int) (16 * sy), juce::Justification::centredRight);
 }
 
 void SantosLevelerAudioProcessorEditor::resized()
@@ -321,8 +392,10 @@ void SantosLevelerAudioProcessorEditor::resized()
     outputMeter.setBounds ((int) (1050 * sx), (int) (82 * sy), (int) (132 * sx), (int) (408 * sy));
     history.setBounds ((int) (158 * sx), (int) (82 * sy), (int) (884 * sx), (int) (408 * sy));
 
-    juce::Slider* knobs[] = { &gateKnob, &targetKnob, &speedKnob, &detectKnob, &lookaheadKnob, &holdKnob, &releaseKnob, &peakThresholdKnob };
-    juce::Label* labels[] = { &gateLabel, &targetLabel, &speedLabel, &detectLabel, &lookaheadLabel, &holdLabel, &releaseLabel, &peakThresholdLabel };
+    juce::Slider* knobs[] = { &gateKnob, &targetKnob, &speedKnob, &detectKnob,
+                              &lookaheadKnob, &holdKnob, &releaseKnob, &peakThresholdKnob };
+    juce::Label* labels[] = { &gateLabel, &targetLabel, &speedLabel, &detectLabel,
+                             &lookaheadLabel, &holdLabel, &releaseLabel, &peakThresholdLabel };
 
     const float startX = 30.0f;
     const float totalW = 1140.0f;
@@ -331,7 +404,8 @@ void SantosLevelerAudioProcessorEditor::resized()
     {
         const auto x = (startX + cellW * (float) i) * sx;
         labels[i]->setBounds ((int) x, (int) (514 * sy), (int) (cellW * sx), (int) (18 * sy));
-        knobs[i]->setBounds ((int) (x + 6 * sx), (int) (532 * sy), (int) ((cellW - 12) * sx), (int) (112 * sy));
+        knobs[i]->setBounds ((int) (x + 5 * sx), (int) (531 * sy),
+                             (int) ((cellW - 10) * sx), (int) (113 * sy));
     }
 
     const float fStart = 35.0f;
@@ -385,9 +459,9 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
     }
 
     auto plot = chartArea.reduced (20.0f, 8.0f);
-    g.setColour (juce::Colour (0xff050a0d));
+    g.setColour (juce::Colour (0xff04090c));
     g.fillRoundedRectangle (chartArea, 4.0f);
-    g.setColour (border.withAlpha (0.58f));
+    g.setColour (border.withAlpha (0.60f));
     g.drawRoundedRectangle (chartArea.reduced (0.5f), 4.0f, 1.0f);
 
     g.setFont (juce::FontOptions (7.8f));
@@ -397,7 +471,8 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
         g.setColour (juce::Colour (0xff223039).withAlpha (0.72f));
         g.drawHorizontalLine ((int) y, plot.getX(), plot.getRight());
         g.setColour (muted);
-        g.drawText (juce::String (-12 * i), (int) chartArea.getX() + 1, (int) y - 7, 18, 14, juce::Justification::centredRight);
+        g.drawText (juce::String (-12 * i), (int) chartArea.getX() + 1, (int) y - 7,
+                    18, 14, juce::Justification::centredRight);
     }
     for (int i = 0; i <= 12; ++i)
     {
@@ -405,6 +480,33 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
         g.setColour (juce::Colour (0xff1b282f).withAlpha (0.54f));
         g.drawVerticalLine ((int) x, plot.getY(), plot.getBottom());
     }
+
+    // Reference lines give the graph the high-end analyser look from the approved concept.
+    auto levelToY = [&] (float db)
+    {
+        const auto norm = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+        return plot.getBottom() - norm * plot.getHeight();
+    };
+
+    const auto targetDb = getParam (processor, "target");
+    const auto peakThreshold = getParam (processor, "peakThreshold");
+    const auto targetY = levelToY (targetDb);
+    const auto peakY = levelToY (peakThreshold);
+
+    juce::Path dashedTarget;
+    dashedTarget.startNewSubPath (plot.getX(), targetY);
+    dashedTarget.lineTo (plot.getRight(), targetY);
+    const float dash[] = { 5.0f, 5.0f };
+    g.setColour (lime.withAlpha (0.50f));
+    juce::PathStrokeType (1.0f).createDashedStroke (dashedTarget, dashedTarget, dash, 2);
+    g.strokePath (dashedTarget, juce::PathStrokeType (1.0f));
+
+    juce::Path dashedPeak;
+    dashedPeak.startNewSubPath (plot.getX(), peakY);
+    dashedPeak.lineTo (plot.getRight(), peakY);
+    g.setColour (magenta.withAlpha (0.30f));
+    juce::PathStrokeType (1.0f).createDashedStroke (dashedPeak, dashedPeak, dash, 2);
+    g.strokePath (dashedPeak, juce::PathStrokeType (1.0f));
 
     const auto points = processor.getHistory().copyLatest (300);
     if (points.size() >= 2)
@@ -446,20 +548,20 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
 
         g.setColour (green.withAlpha (0.12f));
         g.fillPath (makeFill (outputPath, plot.getBottom()));
-        g.setColour (cyan.withAlpha (0.11f));
+        g.setColour (cyan.withAlpha (0.12f));
         g.fillPath (makeFill (inputPath, plot.getBottom()));
-        g.setColour (yellow.withAlpha (0.07f));
+        g.setColour (yellow.withAlpha (0.065f));
         g.fillPath (makeFill (riderPath, plot.getY()));
 
-        g.setColour (cyan.withAlpha (0.15f)); g.strokePath (inputPath, juce::PathStrokeType (5.0f));
-        g.setColour (green.withAlpha (0.12f)); g.strokePath (outputPath, juce::PathStrokeType (5.0f));
-        g.setColour (yellow.withAlpha (0.12f)); g.strokePath (riderPath, juce::PathStrokeType (5.0f));
-        g.setColour (magenta.withAlpha (0.10f)); g.strokePath (peakPath, juce::PathStrokeType (5.0f));
+        g.setColour (cyan.withAlpha (0.16f)); g.strokePath (inputPath, juce::PathStrokeType (5.0f));
+        g.setColour (green.withAlpha (0.13f)); g.strokePath (outputPath, juce::PathStrokeType (5.0f));
+        g.setColour (yellow.withAlpha (0.13f)); g.strokePath (riderPath, juce::PathStrokeType (5.0f));
+        g.setColour (magenta.withAlpha (0.11f)); g.strokePath (peakPath, juce::PathStrokeType (5.0f));
 
-        g.setColour (cyan); g.strokePath (inputPath, juce::PathStrokeType (1.6f));
-        g.setColour (green); g.strokePath (outputPath, juce::PathStrokeType (1.6f));
-        g.setColour (yellow); g.strokePath (riderPath, juce::PathStrokeType (1.8f));
-        g.setColour (magenta); g.strokePath (peakPath, juce::PathStrokeType (1.6f));
+        g.setColour (cyan); g.strokePath (inputPath, juce::PathStrokeType (1.65f));
+        g.setColour (green); g.strokePath (outputPath, juce::PathStrokeType (1.65f));
+        g.setColour (yellow); g.strokePath (riderPath, juce::PathStrokeType (1.85f));
+        g.setColour (magenta); g.strokePath (peakPath, juce::PathStrokeType (1.65f));
     }
 
     g.setColour (border.withAlpha (0.65f));
@@ -486,10 +588,12 @@ void SantosLevelerAudioProcessorEditor::HistoryComponent::paint (juce::Graphics&
         }
         g.setColour (muted);
         g.setFont (juce::FontOptions (9.3f));
-        g.drawText (statNames[i], cell.withTrimmedTop (8.0f).withHeight (16.0f).toNearestInt(), juce::Justification::centred);
+        g.drawText (statNames[i], cell.withTrimmedTop (8.0f).withHeight (16.0f).toNearestInt(),
+                    juce::Justification::centred);
         g.setColour (statCols[i]);
-        g.setFont (juce::FontOptions (17.0f));
-        g.drawText (juce::String (values[i], 1) + suffix[i], cell.withTrimmedTop (25.0f).toNearestInt(), juce::Justification::centredTop);
+        g.setFont (juce::FontOptions (18.5f));
+        g.drawText (juce::String (values[i], 1) + suffix[i],
+                    cell.withTrimmedTop (25.0f).toNearestInt(), juce::Justification::centredTop);
     }
 
     if (processor.hasHostTransport() && ! processor.getTransportPlaying())
@@ -509,48 +613,88 @@ void SantosLevelerAudioProcessorEditor::MeterComponent::paint (juce::Graphics& g
     drawInsetPanel (g, r, 6.0f);
 
     g.setColour (colour);
-    g.setFont (juce::FontOptions (11.0f));
-    g.drawText (label, 0, 12, getWidth(), 18, juce::Justification::centred);
+    g.setFont (juce::FontOptions (10.5f));
+    g.drawText (label, 0, 12, getWidth(), 17, juce::Justification::centred);
     g.setFont (juce::FontOptions (15.0f));
-    g.drawText (juce::String (db, 1) + " dB", 0, 36, getWidth(), 22, juce::Justification::centred);
+    g.drawText (juce::String (db, 1) + " dB", 0, 34, getWidth(), 22, juce::Justification::centred);
 
-    auto meterArea = r.reduced (18.0f, 68.0f);
-    meterArea.removeFromBottom (20.0f);
-    const auto gap = juce::jmax (6.0f, meterArea.getWidth() * 0.10f);
+    auto meterArea = r.reduced (15.0f, 64.0f);
+    meterArea.removeFromBottom (24.0f);
+
+    const bool inputSide = source == Source::input;
+    const float scaleW = 21.0f;
+    auto scaleArea = inputSide ? meterArea.removeFromLeft (scaleW) : meterArea.removeFromRight (scaleW);
+    meterArea.reduce (4.0f, 0.0f);
+
+    const auto gap = juce::jmax (5.0f, meterArea.getWidth() * 0.08f);
     const auto barW = (meterArea.getWidth() - gap) * 0.5f;
+    constexpr int segments = 30;
+    const auto segGap = 2.0f;
 
-    for (int i = 0; i < 2; ++i)
+    for (int ch = 0; ch < 2; ++ch)
     {
-        auto bar = juce::Rectangle<float> (meterArea.getX() + (barW + gap) * (float) i,
+        auto bar = juce::Rectangle<float> (meterArea.getX() + (barW + gap) * (float) ch,
                                            meterArea.getY(), barW, meterArea.getHeight());
-        g.setColour (juce::Colour (0xff1b252b));
-        g.fillRoundedRectangle (bar, 2.0f);
 
-        for (int s = 1; s < 10; ++s)
-        {
-            const auto y = bar.getY() + bar.getHeight() * (float) s / 10.0f;
-            g.setColour (juce::Colours::black.withAlpha (0.30f));
-            g.drawHorizontalLine ((int) y, bar.getX(), bar.getRight());
-        }
+        g.setColour (juce::Colours::black.withAlpha (0.58f));
+        g.fillRoundedRectangle (bar.expanded (2.0f), 3.0f);
+        g.setColour (juce::Colour (0xff223038));
+        g.drawRoundedRectangle (bar.expanded (1.5f), 2.5f, 0.8f);
 
         const auto norm = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
-        auto fill = bar;
-        fill.setY (bar.getBottom() - bar.getHeight() * norm);
-        fill.setHeight (bar.getHeight() * norm);
-        juce::ColourGradient meterGrad (colour.darker (0.35f), fill.getBottomLeft(), colour.brighter (0.22f), fill.getTopLeft(), false);
-        g.setGradientFill (meterGrad);
-        g.fillRoundedRectangle (fill, 2.0f);
-        g.setColour (colour.brighter (0.35f));
-        g.fillRect (bar.getX() - 2.0f, fill.getY() - 1.0f, bar.getWidth() + 4.0f, 2.0f);
+        const auto segmentH = (bar.getHeight() - segGap * (segments - 1)) / (float) segments;
+
+        for (int s = 0; s < segments; ++s)
+        {
+            const auto levelNorm = (float) (s + 1) / (float) segments;
+            const auto yy = bar.getBottom() - (float) (s + 1) * segmentH - (float) s * segGap;
+            auto seg = juce::Rectangle<float> (bar.getX(), yy, bar.getWidth(), segmentH);
+            const bool on = levelNorm <= norm + 0.0001f;
+            const auto segColour = meterColourForNorm (colour, levelNorm);
+
+            if (on)
+            {
+                g.setColour (segColour.withAlpha (0.13f));
+                g.fillRoundedRectangle (seg.expanded (2.0f, 1.0f), 1.5f);
+                juce::ColourGradient led (segColour.brighter (0.22f), seg.getTopLeft(),
+                                          segColour.darker (0.28f), seg.getBottomLeft(), false);
+                g.setGradientFill (led);
+                g.fillRoundedRectangle (seg, 1.0f);
+                g.setColour (juce::Colours::white.withAlpha (0.16f));
+                g.drawHorizontalLine ((int) seg.getY(), seg.getX() + 1.0f, seg.getRight() - 1.0f);
+            }
+            else
+            {
+                g.setColour (segColour.withAlpha (0.075f));
+                g.fillRoundedRectangle (seg, 1.0f);
+            }
+        }
+
+        if (norm > 0.0f)
+        {
+            const auto peakY = bar.getBottom() - bar.getHeight() * norm;
+            g.setColour (meterColourForNorm (colour, norm).brighter (0.40f));
+            g.fillRect (bar.getX() - 2.0f, peakY - 1.0f, bar.getWidth() + 4.0f, 2.0f);
+        }
     }
 
-    g.setFont (juce::FontOptions (7.5f));
+    g.setFont (juce::FontOptions (7.6f));
     g.setColour (muted);
     for (int i = 0; i <= 5; ++i)
     {
         const auto value = -12 * i;
-        const auto y = meterArea.getY() + meterArea.getHeight() * (float) i / 5.0f;
-        g.drawText (juce::String (value), 1, (int) y - 6, 16, 12, juce::Justification::centredLeft);
+        const auto y = scaleArea.getY() + scaleArea.getHeight() * (float) i / 5.0f;
+        g.drawText (juce::String (value), scaleArea.withY (y - 6.0f).withHeight (12.0f).toNearestInt(),
+                    inputSide ? juce::Justification::centredRight : juce::Justification::centredLeft);
+
+        const auto tickX1 = inputSide ? scaleArea.getRight() - 3.0f : scaleArea.getX();
+        const auto tickX2 = inputSide ? scaleArea.getRight() : scaleArea.getX() + 3.0f;
+        g.setColour (borderHi.withAlpha (0.45f));
+        g.drawLine (tickX1, y, tickX2, y, 0.8f);
+        g.setColour (muted);
     }
-    g.drawText ("RMS", 0, getHeight() - 26, getWidth(), 16, juce::Justification::centred);
+
+    g.setFont (juce::FontOptions (7.4f));
+    g.setColour (muted);
+    g.drawText ("RMS", 0, getHeight() - 25, getWidth(), 14, juce::Justification::centred);
 }
