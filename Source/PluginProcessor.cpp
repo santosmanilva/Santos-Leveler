@@ -113,6 +113,15 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
         0,
         maxLookaheadSamples);
 
+    targetLookaheadSamples = currentLookaheadSamples;
+
+    // 8 ms is long enough to remove a discontinuity when the delay tap moves,
+    // but short enough that the control still feels immediate while adjusting it.
+    lookaheadTransitionLengthSamples = std::max(
+        1,
+        static_cast<int> (std::round(sampleRate * 0.008)));
+    lookaheadTransitionSamplesRemaining = 0;
+
     setLatencySamples(currentLookaheadSamples);
 
     history.clear();
@@ -175,10 +184,16 @@ void SantosLevelerAudioProcessor::processBlock(
         0,
         maxLookaheadSamples);
 
-    if (requestedLookaheadSamples != currentLookaheadSamples)
+    // Start a new tap transition only after the previous one has finished.
+    // If the knob is moved continuously, the latest requested value is picked up
+    // immediately after the current 8 ms crossfade completes instead of repeatedly
+    // restarting the fade and creating zippering.
+    if (lookaheadTransitionSamplesRemaining == 0
+        && requestedLookaheadSamples != targetLookaheadSamples)
     {
-        currentLookaheadSamples = requestedLookaheadSamples;
-        setLatencySamples(currentLookaheadSamples);
+        targetLookaheadSamples = requestedLookaheadSamples;
+        lookaheadTransitionSamplesRemaining = lookaheadTransitionLengthSamples;
+        setLatencySamples(targetLookaheadSamples);
     }
 
     bool playing = true;
@@ -205,6 +220,17 @@ void SantosLevelerAudioProcessor::processBlock(
     SantosLevelerEngine::Telemetry telemetry;
     float historyAlignedInputDb = -100.0f;
 
+    auto wrapReadPosition = [this] (int position)
+    {
+        while (position < 0)
+            position += lookaheadBufferSize;
+
+        while (position >= lookaheadBufferSize)
+            position -= lookaheadBufferSize;
+
+        return position;
+    };
+
     for (int i = 0; i < numSamples; ++i)
     {
         const float detectorL = left[i];
@@ -215,13 +241,44 @@ void SantosLevelerAudioProcessor::processBlock(
         if (delayRight != nullptr)
             delayRight[lookaheadWritePosition] = detectorR;
 
-        auto readPosition = lookaheadWritePosition - currentLookaheadSamples;
+        const auto currentReadPosition = wrapReadPosition(
+            lookaheadWritePosition - currentLookaheadSamples);
 
-        if (readPosition < 0)
-            readPosition += lookaheadBufferSize;
+        float delayedL = delayLeft[currentReadPosition];
+        float delayedR = delayRight != nullptr ? delayRight[currentReadPosition] : delayedL;
 
-        float delayedL = delayLeft[readPosition];
-        float delayedR = delayRight != nullptr ? delayRight[readPosition] : delayedL;
+        historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] =
+            telemetry.inputDb;
+
+        if (lookaheadTransitionSamplesRemaining > 0)
+        {
+            const auto targetReadPosition = wrapReadPosition(
+                lookaheadWritePosition - targetLookaheadSamples);
+
+            const float targetL = delayLeft[targetReadPosition];
+            const float targetR = delayRight != nullptr ? delayRight[targetReadPosition] : targetL;
+
+            const auto progress = 1.0f
+                - static_cast<float> (lookaheadTransitionSamplesRemaining)
+                    / static_cast<float> (lookaheadTransitionLengthSamples);
+
+            // Linear crossfade between the old and new delay taps. A very short
+            // crossfade avoids the hard discontinuity/click caused by jumping taps.
+            delayedL = delayedL + (targetL - delayedL) * progress;
+            delayedR = delayedR + (targetR - delayedR) * progress;
+
+            const auto currentHistoryDb =
+                historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
+            const auto targetHistoryDb =
+                historyInputDbBuffer[static_cast<std::size_t> (targetReadPosition)];
+            historyAlignedInputDb = currentHistoryDb
+                + (targetHistoryDb - currentHistoryDb) * progress;
+        }
+        else
+        {
+            historyAlignedInputDb =
+                historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
+        }
 
         telemetry = engine.processSampleLookahead(
             detectorL,
@@ -230,16 +287,23 @@ void SantosLevelerAudioProcessor::processBlock(
             delayedR,
             p);
 
-        // Keep the visual INPUT trace on the same timeline as the delayed audio.
-        // RIDER, PEAK and OUTPUT already describe the gain/output applied at this
-        // processing instant, so only INPUT needs the same lookahead delay as audio.
-        historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
-        historyAlignedInputDb = historyInputDbBuffer[static_cast<std::size_t> (readPosition)];
+        // Store the detector telemetry after the engine has evaluated this sample.
+        // It is read later from the same delay timeline used by the audio.
+        historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] =
+            telemetry.inputDb;
 
         left[i] = delayedL;
 
         if (right != nullptr)
             right[i] = delayedR;
+
+        if (lookaheadTransitionSamplesRemaining > 0)
+        {
+            --lookaheadTransitionSamplesRemaining;
+
+            if (lookaheadTransitionSamplesRemaining == 0)
+                currentLookaheadSamples = targetLookaheadSamples;
+        }
 
         ++lookaheadWritePosition;
 
@@ -262,8 +326,6 @@ void SantosLevelerAudioProcessor::processBlock(
         }
     }
 
-    // The side INPUT meter remains the live detector level. Only the HISTORY trace
-    // is delayed for visual timing alignment.
     inputMeterDb.store(telemetry.inputDb, std::memory_order_relaxed);
     outputMeterDb.store(telemetry.outputDb, std::memory_order_relaxed);
     riderMeterDb.store(telemetry.riderDb, std::memory_order_relaxed);
