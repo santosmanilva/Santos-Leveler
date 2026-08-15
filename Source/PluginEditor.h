@@ -56,6 +56,8 @@ private:
                         const juce::String& suffix, int decimals, juce::Colour accent);
     void configureFader (juce::Slider&, juce::Label&, const juce::String& name,
                          const juce::String& suffix, int decimals, juce::Colour accent);
+    void configureDevButton (juce::TextButton& button, const juce::String& text);
+    void exportHistoryCsv (int seconds);
 
     SantosLevelerAudioProcessor& processor;
     SantosLookAndFeel lookAndFeel;
@@ -66,6 +68,10 @@ private:
     juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel, peakThresholdLabel;
     juce::Label rangeDownLabel, rangeUpLabel, outputLabel;
     juce::Label titleLabel, subtitleLabel;
+
+    juce::TextButton export30Button;
+    juce::TextButton export60Button;
+    std::unique_ptr<juce::FileChooser> exportFileChooser;
 
     HistoryComponent history;
     MeterComponent inputMeter;
