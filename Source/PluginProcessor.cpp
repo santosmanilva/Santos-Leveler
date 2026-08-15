@@ -88,68 +88,36 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     engine.prepare(sampleRate, getTotalNumInputChannels());
     currentSampleRate = sampleRate;
 
-    maxLookaheadSamples = std::max(
-        0,
-        static_cast<int> (std::ceil(sampleRate * 0.100)));
-
+    maxLookaheadSamples = std::max(0, static_cast<int> (std::ceil(sampleRate * 0.100)));
     lookaheadBufferSize = maxLookaheadSamples + 1;
-
-    lookaheadBuffer.setSize(
-        std::max(1, getTotalNumInputChannels()),
-        lookaheadBufferSize);
-
+    lookaheadBuffer.setSize(std::max(1, getTotalNumInputChannels()), lookaheadBufferSize);
     lookaheadBuffer.clear();
     historyInputDbBuffer.assign(static_cast<std::size_t> (lookaheadBufferSize), -100.0f);
     lookaheadWritePosition = 0;
 
-    const auto lookaheadMs =
-        apvts.getRawParameterValue(paramLookahead)->load();
-
-    currentLookaheadSamples = std::clamp(
-        static_cast<int> (
-            std::round(sampleRate
-                * static_cast<double> (lookaheadMs)
-                * 0.001)),
-        0,
-        maxLookaheadSamples);
-
+    const auto lookaheadMs = apvts.getRawParameterValue(paramLookahead)->load();
+    currentLookaheadSamples = std::clamp(static_cast<int> (std::round(sampleRate * static_cast<double> (lookaheadMs) * 0.001)), 0, maxLookaheadSamples);
     targetLookaheadSamples = currentLookaheadSamples;
-
-    // 8 ms is long enough to remove a discontinuity when the delay tap moves,
-    // but short enough that the control still feels immediate while adjusting it.
-    lookaheadTransitionLengthSamples = std::max(
-        1,
-        static_cast<int> (std::round(sampleRate * 0.008)));
+    lookaheadTransitionLengthSamples = std::max(1, static_cast<int> (std::round(sampleRate * 0.008)));
     lookaheadTransitionSamplesRemaining = 0;
-
     setLatencySamples(currentLookaheadSamples);
 
     history.clear();
     historyCounter = 0;
-
-    historyPeriodSamples = std::max(
-        1,
-        static_cast<int> (std::round(sampleRate / 60.0)));
+    historyPeriodSamples = std::max(1, static_cast<int> (std::round(sampleRate / 60.0)));
 }
 
-void SantosLevelerAudioProcessor::releaseResources()
-{
-}
+void SantosLevelerAudioProcessor::releaseResources() {}
 
 bool SantosLevelerAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto in = layouts.getMainInputChannelSet();
     const auto out = layouts.getMainOutputChannelSet();
-
-    if (in != out)
-        return false;
-
+    if (in != out) return false;
     return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
 }
 
-void SantosLevelerAudioProcessor::processBlock(
-    juce::AudioBuffer<float>& buffer,
-    juce::MidiBuffer&)
+void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -161,7 +129,6 @@ void SantosLevelerAudioProcessor::processBlock(
         buffer.clear(ch, 0, numSamples);
 
     SantosLevelerEngine::Parameters p;
-
     p.targetDb = apvts.getRawParameterValue(paramTarget)->load();
     p.gateDb = apvts.getRawParameterValue(paramGate)->load();
     p.speedMs = apvts.getRawParameterValue(paramSpeed)->load();
@@ -174,22 +141,8 @@ void SantosLevelerAudioProcessor::processBlock(
     p.rangeUpDb = apvts.getRawParameterValue(paramRangeUp)->load();
     p.outputDb = apvts.getRawParameterValue(paramOutput)->load();
 
-    const auto lookaheadMs = apvts.getRawParameterValue(paramLookahead)->load();
-
-    const auto requestedLookaheadSamples = std::clamp(
-        static_cast<int> (
-            std::round(currentSampleRate
-                * static_cast<double> (lookaheadMs)
-                * 0.001)),
-        0,
-        maxLookaheadSamples);
-
-    // Start a new tap transition only after the previous one has finished.
-    // If the knob is moved continuously, the latest requested value is picked up
-    // immediately after the current 8 ms crossfade completes instead of repeatedly
-    // restarting the fade and creating zippering.
-    if (lookaheadTransitionSamplesRemaining == 0
-        && requestedLookaheadSamples != targetLookaheadSamples)
+    const auto requestedLookaheadSamples = std::clamp(static_cast<int> (std::round(currentSampleRate * static_cast<double> (p.lookaheadMs) * 0.001)), 0, maxLookaheadSamples);
+    if (lookaheadTransitionSamplesRemaining == 0 && requestedLookaheadSamples != targetLookaheadSamples)
     {
         targetLookaheadSamples = requestedLookaheadSamples;
         lookaheadTransitionSamplesRemaining = lookaheadTransitionLengthSamples;
@@ -198,7 +151,6 @@ void SantosLevelerAudioProcessor::processBlock(
 
     bool playing = true;
     bool transportKnown = false;
-
     if (auto* hostPlayHead = getPlayHead())
     {
         if (auto position = hostPlayHead->getPosition())
@@ -213,7 +165,6 @@ void SantosLevelerAudioProcessor::processBlock(
 
     auto* left = buffer.getWritePointer(0);
     auto* right = numInputChannels > 1 ? buffer.getWritePointer(1) : nullptr;
-
     auto* delayLeft = lookaheadBuffer.getWritePointer(0);
     auto* delayRight = numInputChannels > 1 ? lookaheadBuffer.getWritePointer(1) : nullptr;
 
@@ -222,12 +173,8 @@ void SantosLevelerAudioProcessor::processBlock(
 
     auto wrapReadPosition = [this] (int position)
     {
-        while (position < 0)
-            position += lookaheadBufferSize;
-
-        while (position >= lookaheadBufferSize)
-            position -= lookaheadBufferSize;
-
+        while (position < 0) position += lookaheadBufferSize;
+        while (position >= lookaheadBufferSize) position -= lookaheadBufferSize;
         return position;
     };
 
@@ -237,90 +184,65 @@ void SantosLevelerAudioProcessor::processBlock(
         const float detectorR = right != nullptr ? right[i] : detectorL;
 
         delayLeft[lookaheadWritePosition] = detectorL;
+        if (delayRight != nullptr) delayRight[lookaheadWritePosition] = detectorR;
 
-        if (delayRight != nullptr)
-            delayRight[lookaheadWritePosition] = detectorR;
-
-        const auto currentReadPosition = wrapReadPosition(
-            lookaheadWritePosition - currentLookaheadSamples);
-
+        const auto currentReadPosition = wrapReadPosition(lookaheadWritePosition - currentLookaheadSamples);
         float delayedL = delayLeft[currentReadPosition];
         float delayedR = delayRight != nullptr ? delayRight[currentReadPosition] : delayedL;
 
-        historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] =
-            telemetry.inputDb;
-
         if (lookaheadTransitionSamplesRemaining > 0)
         {
-            const auto targetReadPosition = wrapReadPosition(
-                lookaheadWritePosition - targetLookaheadSamples);
-
+            const auto targetReadPosition = wrapReadPosition(lookaheadWritePosition - targetLookaheadSamples);
             const float targetL = delayLeft[targetReadPosition];
             const float targetR = delayRight != nullptr ? delayRight[targetReadPosition] : targetL;
+            const auto progress = 1.0f - static_cast<float> (lookaheadTransitionSamplesRemaining) / static_cast<float> (lookaheadTransitionLengthSamples);
 
-            const auto progress = 1.0f
-                - static_cast<float> (lookaheadTransitionSamplesRemaining)
-                    / static_cast<float> (lookaheadTransitionLengthSamples);
-
-            // Linear crossfade between the old and new delay taps. A very short
-            // crossfade avoids the hard discontinuity/click caused by jumping taps.
             delayedL = delayedL + (targetL - delayedL) * progress;
             delayedR = delayedR + (targetR - delayedR) * progress;
 
-            const auto currentHistoryDb =
-                historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
-            const auto targetHistoryDb =
-                historyInputDbBuffer[static_cast<std::size_t> (targetReadPosition)];
-            historyAlignedInputDb = currentHistoryDb
-                + (targetHistoryDb - currentHistoryDb) * progress;
+            const auto currentHistoryDb = historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
+            const auto targetHistoryDb = historyInputDbBuffer[static_cast<std::size_t> (targetReadPosition)];
+            historyAlignedInputDb = currentHistoryDb + (targetHistoryDb - currentHistoryDb) * progress;
         }
         else
         {
-            historyAlignedInputDb =
-                historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
+            historyAlignedInputDb = historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
         }
 
-        telemetry = engine.processSampleLookahead(
-            detectorL,
-            detectorR,
-            delayedL,
-            delayedR,
-            p);
-
-        // Store the detector telemetry after the engine has evaluated this sample.
-        // It is read later from the same delay timeline used by the audio.
-        historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] =
-            telemetry.inputDb;
+        telemetry = engine.processSampleLookahead(detectorL, detectorR, delayedL, delayedR, p);
+        historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
 
         left[i] = delayedL;
-
-        if (right != nullptr)
-            right[i] = delayedR;
+        if (right != nullptr) right[i] = delayedR;
 
         if (lookaheadTransitionSamplesRemaining > 0)
         {
             --lookaheadTransitionSamplesRemaining;
-
             if (lookaheadTransitionSamplesRemaining == 0)
                 currentLookaheadSamples = targetLookaheadSamples;
         }
 
         ++lookaheadWritePosition;
-
-        if (lookaheadWritePosition >= lookaheadBufferSize)
-            lookaheadWritePosition = 0;
+        if (lookaheadWritePosition >= lookaheadBufferSize) lookaheadWritePosition = 0;
 
         if (++historyCounter >= historyPeriodSamples)
         {
             historyCounter = 0;
-
             if (!transportKnown || playing)
             {
                 history.push({
                     historyAlignedInputDb,
+                    telemetry.fastDb,
+                    telemetry.slowDb,
+                    telemetry.controlDb,
+                    telemetry.requestedRiderDb,
+                    telemetry.effectiveRiderDb,
                     telemetry.riderDb,
+                    telemetry.peakEnvelopeDb,
+                    telemetry.peakReductionDb,
                     telemetry.peakDb,
-                    telemetry.outputDb
+                    telemetry.outputDb,
+                    telemetry.gateActive
                 });
             }
         }
