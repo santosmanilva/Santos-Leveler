@@ -281,7 +281,8 @@ public:
         constexpr float peakReleaseFastMs = 70.0f;
         constexpr float peakReleaseSlowMs = 160.0f;
 
-        const auto appliedPeakReductionDb = std::max (0.0f, -gainToDb (currentPeakGain));
+        const auto currentPeakDb = gainToDb (currentPeakGain);
+        const auto appliedPeakReductionDb = std::max (0.0f, -currentPeakDb);
         const auto peakReleaseDepth = std::clamp (appliedPeakReductionDb / 9.0f, 0.0f, 1.0f);
         const auto adaptivePeakReleaseMs =
             peakReleaseFastMs + (peakReleaseSlowMs - peakReleaseFastMs) * peakReleaseDepth;
@@ -307,18 +308,12 @@ public:
         const auto outputRms = outputDetector.process (left, right, numChannels);
         const auto outputDb = gainToDb (outputRms);
 
+        // Release telemetry only: reuse values already computed by the DSP instead
+        // of doing extra per-sample dB conversions for the UI/history.
         lastTelemetry.inputDb = inputDb;
-        lastTelemetry.fastDb = fastDb;
-        lastTelemetry.slowDb = slowDb;
-        lastTelemetry.controlDb = controlInputDb;
-        lastTelemetry.requestedRiderDb = latestRequestedCorrectionDb;
-        lastTelemetry.effectiveRiderDb = effectiveCorrectionDb;
-        lastTelemetry.riderDb = gainToDb (currentRiderGain);
-        lastTelemetry.peakEnvelopeDb = peakEnvelopeDb;
-        lastTelemetry.peakReductionDb = peakReductionDb;
-        lastTelemetry.peakDb = gainToDb (currentPeakGain);
+        lastTelemetry.riderDb = currentRiderDb;
+        lastTelemetry.peakDb = currentPeakDb;
         lastTelemetry.outputDb = outputDb;
-        lastTelemetry.gateActive = detectorActive;
 
         riderActive = detectorActive || std::abs (lastTelemetry.riderDb) > 0.05f;
         lastTelemetry.riderActive = riderActive;
