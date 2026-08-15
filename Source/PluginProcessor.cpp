@@ -230,20 +230,28 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             historyCounter = 0;
             if (!transportKnown || playing)
             {
-                history.push({
-                    historyAlignedInputDb,
-                    telemetry.fastDb,
-                    telemetry.slowDb,
-                    telemetry.controlDb,
-                    telemetry.requestedRiderDb,
-                    telemetry.effectiveRiderDb,
-                    telemetry.riderDb,
-                    telemetry.peakEnvelopeDb,
-                    telemetry.peakReductionDb,
-                    telemetry.peakDb,
-                    telemetry.outputDb,
-                    telemetry.gateActive
-                });
+                const auto telemetrySnapshot = telemetry;
+                const auto minCorrectionDb = std::clamp(p.rangeDownDb, -12.0f, 0.0f);
+                const auto maxCorrectionDb = std::clamp(p.rangeUpDb, 0.0f, 12.0f);
+
+                SantosHistoryPoint snapshot;
+                snapshot.inputDb = historyAlignedInputDb;
+                snapshot.fastDb = telemetrySnapshot.fastDb;
+                snapshot.slowDb = telemetrySnapshot.slowDb;
+                snapshot.controlDb = telemetrySnapshot.controlDb;
+                snapshot.rawRiderDb = std::clamp(
+                    p.targetDb - telemetrySnapshot.controlDb,
+                    minCorrectionDb,
+                    maxCorrectionDb);
+                snapshot.requestedRiderDb = telemetrySnapshot.requestedRiderDb;
+                snapshot.effectiveRiderDb = telemetrySnapshot.effectiveRiderDb;
+                snapshot.riderDb = telemetrySnapshot.riderDb;
+                snapshot.peakEnvelopeDb = telemetrySnapshot.peakEnvelopeDb;
+                snapshot.peakReductionDb = telemetrySnapshot.peakReductionDb;
+                snapshot.peakDb = telemetrySnapshot.peakDb;
+                snapshot.outputDb = telemetrySnapshot.outputDb;
+                snapshot.gateActive = telemetrySnapshot.gateActive;
+                history.push(snapshot);
             }
         }
     }
