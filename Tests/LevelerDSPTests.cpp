@@ -1,4 +1,5 @@
 #include "../Source/LevelerEngine.h"
+#include "../Source/TruePeakLimiter.h"
 
 #include <cassert>
 #include <cmath>
@@ -62,6 +63,32 @@ int main()
     runConstantSignal (engine, p, inMinus32, static_cast<int> (sr * 0.5), y);
     const auto trimDb = SantosLevelerEngine::gainToDb (std::abs (y));
     assert (trimDb > -38.5f && trimDb < -37.5f);
+
+    SantosTruePeakLimiter limiter;
+    limiter.prepare (sr, 2);
+    assert (limiter.getLatencySamples() == 48);
+
+    constexpr float hotSignal = 1.2f;
+    constexpr float dryReference = 0.5f;
+    constexpr float ceilingLinear = 0.891250938f; // -1 dBTP
+    float limitedL = 0.0f;
+    float limitedR = 0.0f;
+    float delayedDryL = 0.0f;
+    float delayedDryR = 0.0f;
+
+    for (int i = 0; i < static_cast<int> (sr * 0.25); ++i)
+    {
+        limiter.process (hotSignal, hotSignal,
+                         dryReference, dryReference,
+                         limitedL, limitedR,
+                         delayedDryL, delayedDryR);
+    }
+
+    assert (std::abs (limitedL) <= ceilingLinear + 0.002f);
+    assert (std::abs (limitedR) <= ceilingLinear + 0.002f);
+    assert (std::abs (delayedDryL - dryReference) < 1.0e-6f);
+    assert (std::abs (delayedDryR - dryReference) < 1.0e-6f);
+    assert (limiter.getGainReductionDb() < -2.0f);
 
     std::cout << "SANTOS LEVELER DSP tests passed.\n";
     return 0;
