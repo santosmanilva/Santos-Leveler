@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
 #include <vector>
 
 #include "HistoryBuffer.h"
@@ -47,7 +48,16 @@ public:
     bool getTransportPlaying() const noexcept { return transportPlaying.load (std::memory_order_relaxed); }
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
 
+    void ensureABStatesInitialised();
+    void selectABState (bool useB);
+    bool isABStateB() const noexcept { return abStateBSelected.load (std::memory_order_relaxed); }
+
 private:
+    using ABState = std::array<float, 11>;
+
+    ABState captureCurrentABState() const;
+    void applyABState (const ABState& state);
+
     SantosLevelerEngine engine;
     SantosHistoryBuffer history;
 
@@ -66,6 +76,12 @@ private:
 
     float bypassMix = 0.0f;
     float bypassSmoothingAlpha = 1.0f;
+
+    juce::CriticalSection abStateLock;
+    ABState abStateA {};
+    ABState abStateB {};
+    bool abStatesInitialised = false;
+    std::atomic<bool> abStateBSelected { false };
 
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };

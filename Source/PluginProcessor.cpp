@@ -16,6 +16,25 @@ constexpr auto paramRangeUp       = "rangeUp";
 constexpr auto paramOutput        = "output";
 constexpr auto paramBypass        = "bypass";
 
+constexpr std::array<const char*, 11> abParameterIds {
+    paramTarget,
+    paramGate,
+    paramSpeed,
+    paramDetect,
+    paramLookahead,
+    paramHold,
+    paramRelease,
+    paramPeakThreshold,
+    paramRangeDown,
+    paramRangeUp,
+    paramOutput
+};
+
+juce::Identifier abPropertyName (const char* prefix, std::size_t index)
+{
+    return juce::Identifier (juce::String (prefix) + juce::String (static_cast<int> (index)));
+}
+
 juce::NormalisableRange<float> skewedRange (float start, float end, float centre, float interval)
 {
     juce::NormalisableRange<float> r (start, end, interval);
@@ -85,6 +104,77 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
     layout.add (std::make_unique<APB> (juce::ParameterID { paramBypass, 1 }, "Bypass", false));
 
     return layout;
+}
+
+SantosLevelerAudioProcessor::ABState SantosLevelerAudioProcessor::captureCurrentABState() const
+{
+    ABState state {};
+
+    for (std::size_t i = 0; i < abParameterIds.size(); ++i)
+        if (auto* value = apvts.getRawParameterValue (abParameterIds[i]))
+            state[i] = value->load();
+
+    return state;
+}
+
+void SantosLevelerAudioProcessor::applyABState (const ABState& state)
+{
+    for (std::size_t i = 0; i < abParameterIds.size(); ++i)
+    {
+        if (auto* parameter = apvts.getParameter (abParameterIds[i]))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (state[i]));
+            parameter->endChangeGesture();
+        }
+    }
+}
+
+void SantosLevelerAudioProcessor::ensureABStatesInitialised()
+{
+    const juce::ScopedLock lock (abStateLock);
+
+    if (abStatesInitialised)
+        return;
+
+    const auto current = captureCurrentABState();
+    abStateA = current;
+    abStateB = current;
+    abStateBSelected.store (false, std::memory_order_relaxed);
+    abStatesInitialised = true;
+}
+
+void SantosLevelerAudioProcessor::selectABState (bool useB)
+{
+    ABState stateToApply {};
+
+    {
+        const juce::ScopedLock lock (abStateLock);
+
+        if (! abStatesInitialised)
+        {
+            const auto current = captureCurrentABState();
+            abStateA = current;
+            abStateB = current;
+            abStateBSelected.store (false, std::memory_order_relaxed);
+            abStatesInitialised = true;
+        }
+
+        const auto currentlyUsingB = abStateBSelected.load (std::memory_order_relaxed);
+
+        if (currentlyUsingB == useB)
+            return;
+
+        if (currentlyUsingB)
+            abStateB = captureCurrentABState();
+        else
+            abStateA = captureCurrentABState();
+
+        abStateBSelected.store (useB, std::memory_order_relaxed);
+        stateToApply = useB ? abStateB : abStateA;
+    }
+
+    applyABState (stateToApply);
 }
 
 void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
@@ -283,8 +373,43 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    ABState stateA {};
+    ABState stateB {};
+    bool selectedB = false;
+
+    {
+        const juce::ScopedLock lock (abStateLock);
+
+        if (! abStatesInitialised)
+        {
+            const auto current = captureCurrentABState();
+            abStateA = current;
+            abStateB = current;
+            abStateBSelected.store (false, std::memory_order_relaxed);
+            abStatesInitialised = true;
+        }
+
+        if (abStateBSelected.load (std::memory_order_relaxed))
+            abStateB = captureCurrentABState();
+        else
+            abStateA = captureCurrentABState();
+
+        stateA = abStateA;
+        stateB = abStateB;
+        selectedB = abStateBSelected.load (std::memory_order_relaxed);
+    }
+
     if (auto state = apvts.copyState(); state.isValid())
     {
+        state.setProperty ("abInitialised", true, nullptr);
+        state.setProperty ("abSelectedB", selectedB, nullptr);
+
+        for (std::size_t i = 0; i < abParameterIds.size(); ++i)
+        {
+            state.setProperty (abPropertyName ("abA", i), stateA[i], nullptr);
+            state.setProperty (abPropertyName ("abB", i), stateB[i], nullptr);
+        }
+
         juce::MemoryOutputStream stream (destData, false);
         state.writeToStream (stream);
     }
@@ -293,7 +418,33 @@ void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destDa
 void SantosLevelerAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto state = juce::ValueTree::readFromData (data, static_cast<std::size_t> (sizeInBytes)); state.isValid())
+    {
         apvts.replaceState (state);
+        const auto current = captureCurrentABState();
+
+        const juce::ScopedLock lock (abStateLock);
+        const auto hasStoredAB = static_cast<bool> (state.getProperty ("abInitialised", false));
+
+        if (hasStoredAB)
+        {
+            for (std::size_t i = 0; i < abParameterIds.size(); ++i)
+            {
+                abStateA[i] = static_cast<float> (state.getProperty (abPropertyName ("abA", i), current[i]));
+                abStateB[i] = static_cast<float> (state.getProperty (abPropertyName ("abB", i), current[i]));
+            }
+
+            abStateBSelected.store (static_cast<bool> (state.getProperty ("abSelectedB", false)),
+                                    std::memory_order_relaxed);
+        }
+        else
+        {
+            abStateA = current;
+            abStateB = current;
+            abStateBSelected.store (false, std::memory_order_relaxed);
+        }
+
+        abStatesInitialised = true;
+    }
 }
 
 juce::AudioProcessorEditor* SantosLevelerAudioProcessor::createEditor()
