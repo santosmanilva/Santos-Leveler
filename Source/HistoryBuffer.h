@@ -7,17 +7,23 @@
 
 struct SantosHistoryPoint
 {
-    float inputDb  = -100.0f;
-    float riderDb  = 0.0f;
-    float peakDb   = 0.0f;
+    float inputDb = -100.0f;
+    float fastDb = -100.0f;
+    float slowDb = -100.0f;
+    float controlDb = -100.0f;
+    float requestedRiderDb = 0.0f;
+    float effectiveRiderDb = 0.0f;
+    float riderDb = 0.0f;
+    float peakEnvelopeDb = -100.0f;
+    float peakReductionDb = 0.0f;
+    float peakDb = 0.0f;
     float outputDb = -100.0f;
+    bool gateActive = false;
 };
 
 class SantosHistoryBuffer
 {
 public:
-    // HISTORY is sampled at approximately 60 Hz. 4096 points retain about
-    // 68 seconds, giving the temporary development exporter a full last minute.
     static constexpr std::size_t capacity = 4096;
 
     void clear() noexcept
