@@ -14,6 +14,7 @@ constexpr auto paramPeakThreshold = "peakThreshold";
 constexpr auto paramRangeDown     = "rangeDown";
 constexpr auto paramRangeUp       = "rangeUp";
 constexpr auto paramOutput        = "output";
+constexpr auto paramBypass        = "bypass";
 
 juce::NormalisableRange<float> skewedRange (float start, float end, float centre, float interval)
 {
@@ -34,6 +35,7 @@ SantosLevelerAudioProcessor::SantosLevelerAudioProcessor()
 juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor::createParameterLayout()
 {
     using APF = juce::AudioParameterFloat;
+    using APB = juce::AudioParameterBool;
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramTarget, 1 }, "Target",
@@ -80,6 +82,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.5f), 0.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
+    layout.add (std::make_unique<APB> (juce::ParameterID { paramBypass, 1 }, "Bypass", false));
+
     return layout;
 }
 
@@ -101,6 +105,12 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     lookaheadTransitionLengthSamples = std::max(1, static_cast<int> (std::round(sampleRate * 0.008)));
     lookaheadTransitionSamplesRemaining = 0;
     setLatencySamples(currentLookaheadSamples);
+
+    const auto bypassed = apvts.getRawParameterValue(paramBypass)->load() >= 0.5f;
+    bypassMix = bypassed ? 1.0f : 0.0f;
+    const auto bypassSmoothingSeconds = 0.010;
+    bypassSmoothingAlpha = static_cast<float> (
+        1.0 - std::exp(-1.0 / (bypassSmoothingSeconds * std::max(1.0, sampleRate))));
 
     history.clear();
     historyCounter = 0;
@@ -140,6 +150,8 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     p.rangeDownDb = apvts.getRawParameterValue(paramRangeDown)->load();
     p.rangeUpDb = apvts.getRawParameterValue(paramRangeUp)->load();
     p.outputDb = apvts.getRawParameterValue(paramOutput)->load();
+
+    const auto bypassTarget = apvts.getRawParameterValue(paramBypass)->load() >= 0.5f ? 1.0f : 0.0f;
 
     const auto requestedLookaheadSamples = std::clamp(static_cast<int> (std::round(currentSampleRate * static_cast<double> (p.lookaheadMs) * 0.001)), 0, maxLookaheadSamples);
     if (lookaheadTransitionSamplesRemaining == 0 && requestedLookaheadSamples != targetLookaheadSamples)
@@ -209,11 +221,18 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             historyAlignedInputDb = historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
         }
 
+        const float dryL = delayedL;
+        const float dryR = delayedR;
+
         telemetry = engine.processSampleLookahead(detectorL, detectorR, delayedL, delayedR, p);
         historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
 
-        left[i] = delayedL;
-        if (right != nullptr) right[i] = delayedR;
+        bypassMix += bypassSmoothingAlpha * (bypassTarget - bypassMix);
+        const auto wetMix = 1.0f - bypassMix;
+
+        left[i] = delayedL * wetMix + dryL * bypassMix;
+        if (right != nullptr)
+            right[i] = delayedR * wetMix + dryR * bypassMix;
 
         if (lookaheadTransitionSamplesRemaining > 0)
         {
