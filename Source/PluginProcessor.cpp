@@ -37,7 +37,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramTarget, 1 }, "Target",
-                                       juce::NormalisableRange<float> (-36.0f, -12.0f, 0.5f), -20.0f,
+                                       juce::NormalisableRange<float> (-36.0f, -12.0f, 0.5f), -19.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramGate, 1 }, "Gate",
@@ -57,7 +57,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramHold, 1 }, "Hold",
-                                       juce::NormalisableRange<float> (0.0f, 1000.0f, 10.0f), 100.0f,
+                                       juce::NormalisableRange<float> (0.0f, 1000.0f, 10.0f), 50.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRelease, 1 }, "Release",
@@ -69,7 +69,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::AudioParameterFloatAttributes().withLabel ("dBFS")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeDown, 1 }, "Range Down",
-                                       juce::NormalisableRange<float> (-12.0f, 0.0f, 0.5f), -9.0f,
+                                       juce::NormalisableRange<float> (-12.0f, 0.0f, 0.5f), -12.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeUp, 1 }, "Range Up",
