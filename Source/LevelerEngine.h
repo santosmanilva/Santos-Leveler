@@ -37,8 +37,6 @@ public:
         sampleRate = std::max (1.0, newSampleRate);
         numChannels = std::clamp (newNumChannels, 1, 2);
 
-        // Two independent voice detectors:
-        // FAST follows syllables and level changes; SLOW represents the phrase body.
         inputFastDetector.prepare (sampleRate, 100.0);
         inputSlowDetector.prepare (sampleRate, 300.0);
         outputDetector.prepare (sampleRate, 100.0);
@@ -61,6 +59,7 @@ public:
         holdSamplesRemaining = 0;
         holdActive = false;
         detectorActive = false;
+        gateCloseSamplesRemaining = 0;
 
         peakEnvelopeDb = -100.0f;
         peakReductionDb = 0.0f;
@@ -83,10 +82,6 @@ public:
                                       const Parameters& p)
     {
         const auto fastDetectMs = std::clamp (p.detectMs, 1.0f, 100.0f);
-
-        // The existing DETECT control remains the FAST detector time. The SLOW
-        // detector is derived automatically so no new user parameter is needed.
-        // At the current preferred DETECT=8 ms this gives a 96 ms phrase window.
         const auto slowDetectMs = std::clamp (fastDetectMs * 12.0f, 70.0f, 250.0f);
 
         inputFastDetector.setWindowMs (fastDetectMs);
@@ -99,18 +94,9 @@ public:
         const auto fastDb = gainToDb (fastRms);
         const auto slowDb = gainToDb (slowRms);
 
-        // Adaptive FAST/SLOW blend.
-        //
-        // When a syllable suddenly gets louder, trust FAST strongly so the Rider
-        // stops boosting (or starts reducing) without waiting for the phrase RMS.
-        // When a syllable suddenly gets quieter, trust SLOW more heavily so short
-        // gaps, consonant tails and natural articulation are not immediately boosted.
-        // This is intentionally asymmetric: protection is fast, recovery is calm.
         const auto detectorDeltaDb = fastDb - slowDb;
         const auto fastWeight = detectorDeltaDb >= 0.0f ? 0.78f : 0.22f;
         const auto controlInputDb = slowDb + detectorDeltaDb * fastWeight;
-
-        // Keep INPUT telemetry representative of what the Rider is actually using.
         const auto inputDb = controlInputDb;
 
         const auto instantaneousPeak =
@@ -131,7 +117,39 @@ public:
             const auto minCorrectionDb = std::clamp (p.rangeDownDb, -12.0f, 0.0f);
             const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 12.0f);
 
-            detectorActive = controlInputDb > p.gateDb;
+            // Smart Gate: the knob remains the OPEN threshold. Once active, the
+            // detector must fall 3 dB below it before a close is even considered.
+            // A short grace period then ignores tiny gaps between syllables/words.
+            const auto gateOpenDb = std::clamp (p.gateDb, -70.0f, -25.0f);
+            const auto gateCloseDb = std::max (-100.0f, gateOpenDb - 3.0f);
+            constexpr float gateCloseGraceMs = 80.0f;
+            const auto gateCloseGraceSamples = std::max (1, static_cast<int> (
+                std::round (sampleRate * static_cast<double> (gateCloseGraceMs) * 0.001)));
+
+            if (! detectorActive)
+            {
+                if (controlInputDb >= gateOpenDb)
+                {
+                    detectorActive = true;
+                    gateCloseSamplesRemaining = gateCloseGraceSamples;
+                }
+            }
+            else
+            {
+                if (controlInputDb > gateCloseDb)
+                {
+                    gateCloseSamplesRemaining = gateCloseGraceSamples;
+                }
+                else
+                {
+                    gateCloseSamplesRemaining = std::max (
+                        0,
+                        gateCloseSamplesRemaining - controlPeriodSamples);
+
+                    if (gateCloseSamplesRemaining == 0)
+                        detectorActive = false;
+                }
+            }
 
             const auto newCorrectionDb =
                 detectorActive
@@ -370,6 +388,7 @@ private:
     int holdSamplesRemaining = 0;
     bool holdActive = false;
     bool detectorActive = false;
+    int gateCloseSamplesRemaining = 0;
     float peakEnvelopeDb = -100.0f;
     float peakReductionDb = 0.0f;
     float currentPeakGain = 1.0f;
