@@ -25,10 +25,18 @@ public:
 
     struct Telemetry
     {
-        float inputDb  = -100.0f;
-        float riderDb  = 0.0f;
-        float peakDb   = 0.0f;
+        float inputDb = -100.0f;
+        float fastDb = -100.0f;
+        float slowDb = -100.0f;
+        float controlDb = -100.0f;
+        float requestedRiderDb = 0.0f;
+        float effectiveRiderDb = 0.0f;
+        float riderDb = 0.0f;
+        float peakEnvelopeDb = -100.0f;
+        float peakReductionDb = 0.0f;
+        float peakDb = 0.0f;
         float outputDb = -100.0f;
+        bool gateActive = false;
         bool riderActive = false;
     };
 
@@ -268,9 +276,17 @@ public:
         const auto outputDb = gainToDb (outputRms);
 
         lastTelemetry.inputDb = inputDb;
+        lastTelemetry.fastDb = fastDb;
+        lastTelemetry.slowDb = slowDb;
+        lastTelemetry.controlDb = controlInputDb;
+        lastTelemetry.requestedRiderDb = latestRequestedCorrectionDb;
+        lastTelemetry.effectiveRiderDb = effectiveCorrectionDb;
         lastTelemetry.riderDb = gainToDb (currentRiderGain);
+        lastTelemetry.peakEnvelopeDb = peakEnvelopeDb;
+        lastTelemetry.peakReductionDb = peakReductionDb;
         lastTelemetry.peakDb = gainToDb (currentPeakGain);
         lastTelemetry.outputDb = outputDb;
+        lastTelemetry.gateActive = detectorActive;
 
         riderActive = detectorActive || std::abs (lastTelemetry.riderDb) > 0.05f;
         lastTelemetry.riderActive = riderActive;
