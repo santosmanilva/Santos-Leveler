@@ -10,15 +10,15 @@ class SantosLevelerEngine
 public:
     struct Parameters
     {
-        float targetDb = -20.0f;
+        float targetDb = -19.0f;
         float gateDb = -45.0f;
         float speedMs = 15.0f;
         float detectMs = 8.0f;
         float lookaheadMs = 30.0f;
-        float holdMs = 100.0f;
+        float holdMs = 50.0f;
         float releaseMs = 500.0f;
         float peakThresholdDb = -9.0f;
-        float rangeDownDb = -9.0f;
+        float rangeDownDb = -12.0f;
         float rangeUpDb = 9.0f;
         float outputDb = 0.0f;
     };
@@ -125,9 +125,6 @@ public:
             const auto minCorrectionDb = std::clamp (p.rangeDownDb, -12.0f, 0.0f);
             const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 12.0f);
 
-            // Smart Gate: the knob remains the OPEN threshold. Once active, the
-            // detector must fall 3 dB below it before a close is even considered.
-            // A short grace period then ignores tiny gaps between syllables/words.
             const auto gateOpenDb = std::clamp (p.gateDb, -70.0f, -25.0f);
             const auto gateCloseDb = std::max (-100.0f, gateOpenDb - 3.0f);
             constexpr float gateCloseGraceMs = 80.0f;
@@ -164,10 +161,6 @@ public:
 
             auto preservedCorrectionDb = rawCorrectionDb;
 
-            // Preserve Dynamics V2 prototype:
-            // A fast rise above the slow phrase envelope is treated as a likely
-            // emphasis/transient. Only downward Rider correction is softened,
-            // leaving sustained loudness to be levelled normally once SLOW catches up.
             if (detectorActive && rawCorrectionDb < 0.0f)
             {
                 constexpr float preserveStartDeltaDb = 3.0f;
@@ -184,9 +177,7 @@ public:
                 preservedCorrectionDb *= (1.0f - maxPreserveAmount * preserveStrength);
             }
 
-            const auto newCorrectionDb =
-                detectorActive ? preservedCorrectionDb : 0.0f;
-
+            const auto newCorrectionDb = detectorActive ? preservedCorrectionDb : 0.0f;
             latestRequestedCorrectionDb = newCorrectionDb;
 
             constexpr float epsilonDb = 0.05f;
@@ -235,8 +226,7 @@ public:
             }
         }
 
-        const auto effectiveCorrectionDb =
-            holdActive ? heldCorrectionDb : latestRequestedCorrectionDb;
+        const auto effectiveCorrectionDb = holdActive ? heldCorrectionDb : latestRequestedCorrectionDb;
 
         if (! holdActive)
             heldCorrectionDb = latestRequestedCorrectionDb;
@@ -260,9 +250,8 @@ public:
         const auto safeSpeedMs = std::clamp (p.speedMs, 2.0f, 250.0f);
         const auto safeReleaseMs = std::clamp (p.releaseMs, 50.0f, 3000.0f);
 
-        const auto riderAlpha =
-            movingTowardUnity ? timeConstantAlpha (safeReleaseMs)
-                              : timeConstantAlpha (safeSpeedMs);
+        const auto riderAlpha = movingTowardUnity ? timeConstantAlpha (safeReleaseMs)
+                                                  : timeConstantAlpha (safeSpeedMs);
 
         currentRiderGain += riderAlpha * (targetRiderGain - currentRiderGain);
 
@@ -277,9 +266,8 @@ public:
         const auto targetPeakGain = dbToGain (peakReductionDb);
         const bool needsPeakReduction = targetPeakGain < currentPeakGain;
 
-        const auto peakAlpha =
-            needsPeakReduction ? timeConstantAlpha (1.0f)
-                               : timeConstantAlpha (100.0f);
+        const auto peakAlpha = needsPeakReduction ? timeConstantAlpha (1.0f)
+                                                  : timeConstantAlpha (100.0f);
 
         currentPeakGain += peakAlpha * (targetPeakGain - currentPeakGain);
 
