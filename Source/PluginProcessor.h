@@ -6,6 +6,7 @@
 
 #include "HistoryBuffer.h"
 #include "LevelerEngine.h"
+#include "TruePeakLimiter.h"
 
 class SantosLevelerAudioProcessor final : public juce::AudioProcessor
 {
@@ -47,6 +48,8 @@ public:
     bool getRiderActive() const noexcept { return riderActive.load (std::memory_order_relaxed); }
     bool getTransportPlaying() const noexcept { return transportPlaying.load (std::memory_order_relaxed); }
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
+    float getTruePeakReductionDb() const noexcept { return truePeakLimiter.getGainReductionDb(); }
+    float getDetectedTruePeakDbTP() const noexcept { return truePeakLimiter.getDetectedTruePeakDbTP(); }
 
     void ensureABStatesInitialised();
     void selectABState (bool useB);
@@ -59,6 +62,7 @@ private:
     void applyABState (const ABState& state);
 
     SantosLevelerEngine engine;
+    SantosTruePeakLimiter truePeakLimiter;
     SantosHistoryBuffer history;
 
     juce::AudioBuffer<float> lookaheadBuffer;
