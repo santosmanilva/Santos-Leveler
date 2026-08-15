@@ -67,6 +67,13 @@ private:
     float bypassMix = 0.0f;
     float bypassSmoothingAlpha = 1.0f;
 
+    float gainMatchDryPower = 0.0f;
+    float gainMatchWetPower = 0.0f;
+    float gainMatchGain = 1.0f;
+    float gainMatchTargetGain = 1.0f;
+    float gainMatchPowerAlpha = 1.0f;
+    float gainMatchGainAlpha = 1.0f;
+
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
     std::atomic<float> riderMeterDb { 0.0f };
