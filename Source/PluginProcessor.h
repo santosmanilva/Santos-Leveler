@@ -60,6 +60,9 @@ private:
     int lookaheadBufferSize = 1;
     int maxLookaheadSamples = 0;
     int currentLookaheadSamples = 0;
+    int targetLookaheadSamples = 0;
+    int lookaheadTransitionLengthSamples = 1;
+    int lookaheadTransitionSamplesRemaining = 0;
 
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
