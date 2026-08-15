@@ -64,6 +64,9 @@ private:
     int lookaheadTransitionLengthSamples = 1;
     int lookaheadTransitionSamplesRemaining = 0;
 
+    float bypassMix = 0.0f;
+    float bypassSmoothingAlpha = 1.0f;
+
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
     std::atomic<float> riderMeterDb { 0.0f };
