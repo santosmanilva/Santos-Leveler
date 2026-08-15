@@ -16,7 +16,9 @@ struct SantosHistoryPoint
 class SantosHistoryBuffer
 {
 public:
-    static constexpr std::size_t capacity = 2048;
+    // HISTORY is sampled at approximately 60 Hz. 4096 points retain about
+    // 68 seconds, giving the temporary development exporter a full last minute.
+    static constexpr std::size_t capacity = 4096;
 
     void clear() noexcept
     {
