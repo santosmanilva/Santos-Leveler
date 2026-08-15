@@ -99,6 +99,7 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
         lookaheadBufferSize);
 
     lookaheadBuffer.clear();
+    historyInputDbBuffer.assign(static_cast<std::size_t> (lookaheadBufferSize), -100.0f);
     lookaheadWritePosition = 0;
 
     const auto lookaheadMs =
@@ -202,6 +203,7 @@ void SantosLevelerAudioProcessor::processBlock(
     auto* delayRight = numInputChannels > 1 ? lookaheadBuffer.getWritePointer(1) : nullptr;
 
     SantosLevelerEngine::Telemetry telemetry;
+    float historyAlignedInputDb = -100.0f;
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -228,6 +230,12 @@ void SantosLevelerAudioProcessor::processBlock(
             delayedR,
             p);
 
+        // Keep the visual INPUT trace on the same timeline as the delayed audio.
+        // RIDER, PEAK and OUTPUT already describe the gain/output applied at this
+        // processing instant, so only INPUT needs the same lookahead delay as audio.
+        historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
+        historyAlignedInputDb = historyInputDbBuffer[static_cast<std::size_t> (readPosition)];
+
         left[i] = delayedL;
 
         if (right != nullptr)
@@ -245,7 +253,7 @@ void SantosLevelerAudioProcessor::processBlock(
             if (!transportKnown || playing)
             {
                 history.push({
-                    telemetry.inputDb,
+                    historyAlignedInputDb,
                     telemetry.riderDb,
                     telemetry.peakDb,
                     telemetry.outputDb
@@ -254,6 +262,8 @@ void SantosLevelerAudioProcessor::processBlock(
         }
     }
 
+    // The side INPUT meter remains the live detector level. Only the HISTORY trace
+    // is delayed for visual timing alignment.
     inputMeterDb.store(telemetry.inputDb, std::memory_order_relaxed);
     outputMeterDb.store(telemetry.outputDb, std::memory_order_relaxed);
     riderMeterDb.store(telemetry.riderDb, std::memory_order_relaxed);
