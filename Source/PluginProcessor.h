@@ -90,8 +90,6 @@ private:
 
     float bypassMix = 0.0f;
     float bypassSmoothingAlpha = 1.0f;
-    float finalOutputMeanSquare = 0.0f;
-    float finalOutputMeterAlpha = 1.0f;
 
     juce::CriticalSection abStateLock;
     ABState abStateA {};
