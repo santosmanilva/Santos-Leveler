@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
 #include "PluginProcessor.h"
 
 class SantosLevelerAudioProcessorEditor final : public juce::AudioProcessorEditor,
@@ -12,6 +13,8 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override { ensurePresetButtonVisible(); }
+    void visibilityChanged() override { ensurePresetButtonVisible(); }
 
 private:
     class SantosLookAndFeel final : public juce::LookAndFeel_V4
@@ -73,6 +76,118 @@ private:
         SantosLevelerAudioProcessor& processor;
     };
 
+    class FactoryPresetButton final : public juce::TextButton,
+                                      private juce::ComponentListener
+    {
+    public:
+        explicit FactoryPresetButton (SantosLevelerAudioProcessor& p) : processor (p)
+        {
+            setButtonText ("PRESET");
+            setColour (juce::TextButton::buttonColourId, juce::Colour (0xff101a20));
+            setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff18323b));
+            setColour (juce::TextButton::textColourOffId, juce::Colour (0xff19ccf4));
+            setColour (juce::TextButton::textColourOnId, juce::Colour (0xffeef4f6));
+            onClick = [this] { showMenu(); };
+        }
+
+        ~FactoryPresetButton() override
+        {
+            if (observedParent != nullptr)
+                observedParent->removeComponentListener (this);
+        }
+
+        void parentHierarchyChanged() override
+        {
+            if (observedParent != nullptr)
+                observedParent->removeComponentListener (this);
+            observedParent = getParentComponent();
+            if (observedParent != nullptr)
+            {
+                observedParent->addComponentListener (this);
+                updateBounds();
+            }
+        }
+
+    private:
+        struct Preset
+        {
+            const char* name;
+            std::array<float, 21> values;
+        };
+
+        static constexpr std::array<const char*, 21> parameterIds {{
+            "target", "gate", "speed", "detect", "lookahead", "hold", "release",
+            "peakThreshold", "rangeDown", "rangeUp", "output", "downStrength",
+            "upStrength", "intensity", "compEnabled", "compThreshold", "compRatio",
+            "compAttack", "compRelease", "compMakeup", "ceiling"
+        }};
+
+        static const std::array<Preset, 5>& presets()
+        {
+            static const std::array<Preset, 5> data {{
+                { "Santos Default", {{ -19.0f, -45.0f, 15.0f,  8.0f, 30.0f,  50.0f, 500.0f, -9.0f, -12.0f,  9.0f, 0.0f, 100.0f, 100.0f, 100.0f, 0.0f, -18.0f, 3.0f, 10.0f, 120.0f, 0.0f, -1.0f }} },
+                { "Gentle",         {{ -19.0f, -45.0f, 30.0f, 15.0f, 30.0f, 100.0f, 800.0f, -8.0f,  -8.0f,  6.0f, 0.0f,  65.0f,  65.0f,  70.0f, 0.0f, -18.0f, 2.5f, 15.0f, 160.0f, 0.0f, -1.0f }} },
+                { "Natural",        {{ -19.0f, -45.0f, 22.0f, 10.0f, 30.0f,  70.0f, 650.0f, -8.5f, -10.0f,  7.0f, 0.0f,  80.0f,  80.0f,  82.0f, 0.0f, -18.0f, 2.5f, 12.0f, 150.0f, 0.0f, -1.0f }} },
+                { "Broadcast",      {{ -19.0f, -45.0f, 15.0f,  8.0f, 30.0f,  50.0f, 500.0f, -9.0f, -12.0f,  9.0f, 0.0f, 100.0f, 100.0f, 100.0f, 1.0f, -18.0f, 3.0f, 10.0f, 120.0f, 0.0f, -1.0f }} },
+                { "Tight",          {{ -18.0f, -45.0f, 10.0f,  5.0f, 40.0f,  40.0f, 350.0f, -9.0f, -14.0f, 12.0f, 0.0f, 100.0f, 100.0f, 100.0f, 1.0f, -20.0f, 4.0f,  6.0f, 100.0f, 0.0f, -1.0f }} }
+            }};
+            return data;
+        }
+
+        void showMenu()
+        {
+            juce::PopupMenu menu;
+            const auto& p = presets();
+            for (int i = 0; i < static_cast<int> (p.size()); ++i)
+                menu.addItem (i + 1, p[static_cast<std::size_t> (i)].name);
+
+            auto safeThis = juce::Component::SafePointer<FactoryPresetButton> (this);
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                                [safeThis] (int result)
+                                {
+                                    if (safeThis != nullptr && result > 0)
+                                        safeThis->applyPreset (result - 1);
+                                });
+        }
+
+        void applyPreset (int index)
+        {
+            const auto& p = presets();
+            if (index < 0 || index >= static_cast<int> (p.size()))
+                return;
+
+            const auto& values = p[static_cast<std::size_t> (index)].values;
+            for (std::size_t i = 0; i < parameterIds.size(); ++i)
+            {
+                if (auto* parameter = processor.apvts.getParameter (parameterIds[i]))
+                {
+                    parameter->beginChangeGesture();
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (values[i]));
+                    parameter->endChangeGesture();
+                }
+            }
+        }
+
+        void componentMovedOrResized (juce::Component&, bool, bool wasResized) override
+        {
+            if (wasResized)
+                updateBounds();
+        }
+
+        void updateBounds()
+        {
+            if (observedParent == nullptr)
+                return;
+            const auto sx = static_cast<float> (observedParent->getWidth()) / 2100.0f;
+            const auto sy = static_cast<float> (observedParent->getHeight()) / 1024.0f;
+            setBounds (juce::roundToInt (400.0f * sx), juce::roundToInt (29.0f * sy),
+                       juce::roundToInt (82.0f * sx), juce::roundToInt (40.0f * sy));
+        }
+
+        SantosLevelerAudioProcessor& processor;
+        juce::Component* observedParent = nullptr;
+    };
+
     void timerCallback() override;
     void configureKnob (juce::Slider&, juce::Label&, const juce::String& name,
                         const juce::String& suffix, int decimals, juce::Colour accent);
@@ -80,8 +195,11 @@ private:
                          const juce::String& suffix, int decimals, juce::Colour accent);
     void configureHeaderButton (juce::TextButton& button, const juce::String& text);
     void updateABButtons();
-    void showPresetMenu();
-    void applyFactoryPreset (int presetIndex);
+    void ensurePresetButtonVisible()
+    {
+        if (presetButton.getParentComponent() != this)
+            addAndMakeVisible (presetButton);
+    }
 
     SantosLevelerAudioProcessor& processor;
     SantosLookAndFeel lookAndFeel;
@@ -97,7 +215,7 @@ private:
     juce::Label compThresholdLabel, compRatioLabel, compAttackLabel, compReleaseLabel, compMakeupLabel, ceilingLabel;
     juce::Label titleLabel, subtitleLabel;
 
-    juce::TextButton presetButton;
+    FactoryPresetButton presetButton { processor };
     juce::TextButton resetLoudnessButton;
     juce::TextButton aButton;
     juce::TextButton bButton;
