@@ -74,9 +74,11 @@ private:
 
     juce::Slider targetKnob, gateKnob, speedKnob, detectKnob, lookaheadKnob, holdKnob, releaseKnob, peakThresholdKnob;
     juce::Slider rangeDownSlider, downStrengthSlider, rangeUpSlider, upStrengthSlider, outputSlider;
+    juce::Slider intensitySlider;
 
     juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel, peakThresholdLabel;
     juce::Label rangeDownLabel, downStrengthLabel, rangeUpLabel, upStrengthLabel, outputLabel;
+    juce::Label intensityLabel;
     juce::Label titleLabel, subtitleLabel;
 
     juce::TextButton resetLoudnessButton;
@@ -102,6 +104,7 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment rangeUpAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment upStrengthAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment outputAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment intensityAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SantosLevelerAudioProcessorEditor)
