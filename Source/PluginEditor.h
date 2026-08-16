@@ -34,7 +34,28 @@ private:
     public:
         explicit HistoryComponent (SantosLevelerAudioProcessor& p) : processor (p) {}
         void paint (juce::Graphics&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        bool isTraceVisible (int index) const
+        {
+            static const juce::Identifier ids[] {
+                "graphInputVisible", "graphRiderVisible", "graphPeakVisible", "graphOutputVisible"
+            };
+            return index >= 0 && index < 4
+                ? static_cast<bool> (processor.apvts.state.getProperty (ids[index], true))
+                : true;
+        }
     private:
+        void toggleTrace (int index)
+        {
+            static const juce::Identifier ids[] {
+                "graphInputVisible", "graphRiderVisible", "graphPeakVisible", "graphOutputVisible"
+            };
+            if (index < 0 || index >= 4)
+                return;
+            processor.apvts.state.setProperty (ids[index], ! isTraceVisible (index), nullptr);
+            repaint();
+        }
+
         SantosLevelerAudioProcessor& processor;
     };
 
