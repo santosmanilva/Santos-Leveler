@@ -1,6 +1,7 @@
 #include "../Source/LevelerEngine.h"
 #include "../Source/LoudnessMeter.h"
 #include "../Source/TruePeakLimiter.h"
+#include "../Source/VoiceCompressor.h"
 
 #include <cassert>
 #include <cmath>
@@ -40,16 +41,13 @@ int main()
     float y = 0.0f;
     const float inMinus32 = SantosLevelerEngine::dbToGain (-32.0f);
     runConstantSignal (engine, p, inMinus32, static_cast<int> (sr * 0.5), y);
-
     const auto outDb = SantosLevelerEngine::gainToDb (std::abs (y));
-    // At 100% intensity the validated Rider path remains unchanged.
     assert (outDb > -21.0f && outDb < -19.0f);
 
     engine.reset();
     p.upStrengthPercent = 50.0f;
     runConstantSignal (engine, p, inMinus32, static_cast<int> (sr * 0.5), y);
     const auto halfUpDb = SantosLevelerEngine::gainToDb (std::abs (y));
-    // 50% strength applies roughly half of the +12 dB requested correction.
     assert (halfUpDb > -26.5f && halfUpDb < -25.5f);
 
     engine.reset();
@@ -59,7 +57,6 @@ int main()
     const float inMinus8 = SantosLevelerEngine::dbToGain (-8.0f);
     runConstantSignal (engine, p, inMinus8, static_cast<int> (sr * 0.5), y);
     const auto halfDownDb = SantosLevelerEngine::gainToDb (std::abs (y));
-    // 50% strength applies roughly half of the -12 dB requested correction.
     assert (halfDownDb > -14.5f && halfDownDb < -13.5f);
 
     engine.reset();
@@ -87,7 +84,6 @@ int main()
     runConstantSignal (engine, p, inMinus8, static_cast<int> (sr * 0.75), y);
     const auto zeroIntensityDb = SantosLevelerEngine::gainToDb (std::abs (y));
     const auto zeroIntensityTelemetry = engine.getTelemetry();
-    // Intensity 0 removes Rider and Peak 2.0 while leaving output trim available.
     assert (zeroIntensityDb > -8.5f && zeroIntensityDb < -7.5f);
     assert (std::abs (zeroIntensityTelemetry.riderDb) < 0.1f);
     assert (std::abs (zeroIntensityTelemetry.peakDb) < 0.1f);
@@ -101,7 +97,7 @@ int main()
 
     engine.reset();
     p.rangeUpDb = 12.0f;
-    p.gateDb = -25.0f; // input is below gate, so rider must return to unity
+    p.gateDb = -25.0f;
     runConstantSignal (engine, p, inMinus32, static_cast<int> (sr * 0.5), y);
     const auto gatedDb = SantosLevelerEngine::gainToDb (std::abs (y));
     assert (gatedDb > -32.5f && gatedDb < -31.5f);
@@ -109,10 +105,39 @@ int main()
     engine.reset();
     p.gateDb = -70.0f;
     p.outputDb = -6.0f;
-    p.targetDb = -32.0f; // no rider correction expected
+    p.targetDb = -32.0f;
     runConstantSignal (engine, p, inMinus32, static_cast<int> (sr * 0.5), y);
     const auto trimDb = SantosLevelerEngine::gainToDb (std::abs (y));
     assert (trimDb > -38.5f && trimDb < -37.5f);
+
+    SantosVoiceCompressor compressor;
+    compressor.prepare (sr);
+    SantosVoiceCompressor::Parameters cp;
+    cp.enabled = false;
+    cp.thresholdDb = -18.0f;
+    cp.ratio = 3.0f;
+    cp.attackMs = 10.0f;
+    cp.releaseMs = 120.0f;
+    cp.makeupDb = 0.0f;
+    float compL = 0.5f;
+    float compR = 0.5f;
+    for (int i = 0; i < static_cast<int> (sr * 0.25); ++i)
+    {
+        compL = 0.5f;
+        compR = 0.5f;
+        compressor.process (compL, compR, cp);
+    }
+    assert (std::abs (compL - 0.5f) < 1.0e-4f);
+
+    cp.enabled = true;
+    for (int i = 0; i < static_cast<int> (sr * 0.5); ++i)
+    {
+        compL = 0.5f;
+        compR = 0.5f;
+        compressor.process (compL, compR, cp);
+    }
+    assert (compressor.getGainReductionDb() < -2.0f);
+    assert (compL < 0.5f);
 
     SantosTruePeakLimiter limiter;
     limiter.prepare (sr, 2);
@@ -120,7 +145,7 @@ int main()
 
     constexpr float hotSignal = 1.2f;
     constexpr float dryReference = 0.5f;
-    constexpr float ceilingLinear = 0.891250938f; // -1 dBTP
+    constexpr float ceilingMinus1Linear = 0.891250938f;
     float limitedL = 0.0f;
     float limitedR = 0.0f;
     float delayedDryL = 0.0f;
@@ -134,11 +159,25 @@ int main()
                          delayedDryL, delayedDryR);
     }
 
-    assert (std::abs (limitedL) <= ceilingLinear + 0.002f);
-    assert (std::abs (limitedR) <= ceilingLinear + 0.002f);
+    assert (std::abs (limitedL) <= ceilingMinus1Linear + 0.002f);
+    assert (std::abs (limitedR) <= ceilingMinus1Linear + 0.002f);
     assert (std::abs (delayedDryL - dryReference) < 1.0e-6f);
     assert (std::abs (delayedDryR - dryReference) < 1.0e-6f);
     assert (limiter.getGainReductionDb() < -2.0f);
+
+    limiter.reset();
+    limiter.setCeilingDbTP (-3.0f);
+    constexpr float ceilingMinus3Linear = 0.707945784f;
+    for (int i = 0; i < static_cast<int> (sr * 0.25); ++i)
+    {
+        limiter.process (hotSignal, hotSignal,
+                         dryReference, dryReference,
+                         limitedL, limitedR,
+                         delayedDryL, delayedDryR);
+    }
+    assert (std::abs (limitedL) <= ceilingMinus3Linear + 0.002f);
+    assert (std::abs (limitedR) <= ceilingMinus3Linear + 0.002f);
+    assert (std::abs (limiter.getCeilingDbTP() + 3.0f) < 1.0e-6f);
 
     SantosLoudnessMeter loudness;
     loudness.prepare (sr, 2);
@@ -149,7 +188,6 @@ int main()
         loudness.processSample (sample, sample);
     }
 
-    // Stereo 1 kHz sine at -20 dBFS peak is approximately -20 LUFS with BS.1770 K-weighting.
     assert (loudness.getShortTermLufs() > -20.2f && loudness.getShortTermLufs() < -19.8f);
     assert (loudness.getIntegratedLufs() > -20.2f && loudness.getIntegratedLufs() < -19.8f);
     assert (loudness.getMaxTruePeakDbTP() > -20.2f && loudness.getMaxTruePeakDbTP() < -19.8f);
