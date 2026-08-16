@@ -96,23 +96,25 @@ private:
 
         void clicked() override
         {
-            const juce::String message =
-                "Version 1.0.0\n\n"
-                "Voice Auto Level Rider\n"
-                "VST3 Audio Plugin - Windows x64\n\n"
-                "Designed & Developed by\n"
-                "Santos Leveler Project\n\n"
-                "Developed with assistance from ChatGPT by OpenAI\n\n"
-                "FREEWARE\n"
-                "Free of charge for personal and professional use\n\n"
-                "GitHub\n"
-                "github.com/santosmanilva/SANTOS-LEVELER\n\n"
-                "Contact\n"
-                "github.com/santosmanilva/Santos-Leveler/issues\n\n"
-                "Built with JUCE\n"
-                "True Peak - LUFS M/S/I - Voice Auto Level Rider\n\n"
-                "© 2026 Santos Leveler Project\n"
-                "All rights reserved.";
+            juce::String message;
+            message << "Version 1.0.0\n\n"
+                    << "Voice Auto Level Rider\n"
+                    << "VST3 Audio Plugin " << juce::String::charToString (0x00b7) << " Windows x64\n\n"
+                    << "Designed & Developed by\n"
+                    << "Jos" << juce::String::charToString (0x00e9) << " Antonio Santos Santos\n\n"
+                    << "FREEWARE\n"
+                    << "Free of charge for personal and professional use\n\n"
+                    << "GitHub\n"
+                    << "github.com/santosmanilva/SANTOS-LEVELER\n\n"
+                    << "Contact\n"
+                    << "github.com/santosmanilva/Santos-Leveler/issues\n\n"
+                    << "Built with JUCE\n"
+                    << "True Peak " << juce::String::charToString (0x00b7)
+                    << " LUFS M/S/I " << juce::String::charToString (0x00b7)
+                    << " Voice Auto Level Rider\n\n"
+                    << juce::String::charToString (0x00a9) << " 2026 Jos"
+                    << juce::String::charToString (0x00e9) << " Antonio Santos Santos\n"
+                    << "All rights reserved.";
 
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
                                                     "Santos Leveler",
