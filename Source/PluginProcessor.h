@@ -6,6 +6,7 @@
 
 #include "HistoryBuffer.h"
 #include "LevelerEngine.h"
+#include "LoudnessMeter.h"
 #include "TruePeakLimiter.h"
 
 class SantosLevelerAudioProcessor final : public juce::AudioProcessor
@@ -50,6 +51,10 @@ public:
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
     float getTruePeakReductionDb() const noexcept { return truePeakLimiter.getGainReductionDb(); }
     float getDetectedTruePeakDbTP() const noexcept { return truePeakLimiter.getDetectedTruePeakDbTP(); }
+    float getShortTermLufs() const noexcept { return shortTermLufs.load (std::memory_order_relaxed); }
+    float getIntegratedLufs() const noexcept { return integratedLufs.load (std::memory_order_relaxed); }
+    float getOutputTruePeakDbTP() const noexcept { return outputTruePeakDbTP.load (std::memory_order_relaxed); }
+    void requestLoudnessReset() noexcept { loudnessResetRequested.store (true, std::memory_order_release); }
 
     void ensureABStatesInitialised();
     void selectABState (bool useB);
@@ -63,6 +68,7 @@ private:
 
     SantosLevelerEngine engine;
     SantosTruePeakLimiter truePeakLimiter;
+    SantosLoudnessMeter loudnessMeter;
     SantosHistoryBuffer history;
 
     juce::AudioBuffer<float> lookaheadBuffer;
@@ -90,9 +96,13 @@ private:
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
     std::atomic<float> riderMeterDb { 0.0f };
+    std::atomic<float> shortTermLufs { -100.0f };
+    std::atomic<float> integratedLufs { -100.0f };
+    std::atomic<float> outputTruePeakDbTP { -100.0f };
     std::atomic<bool> riderActive { false };
     std::atomic<bool> transportPlaying { true };
     std::atomic<bool> hostTransportKnown { false };
+    std::atomic<bool> loudnessResetRequested { false };
 
     int historyCounter = 0;
     int historyPeriodSamples = 800;
