@@ -64,7 +64,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramTarget, 1 }, "Target",
-                                       juce::NormalisableRange<float> (-36.0f, -12.0f, 0.5f), -19.0f,
+                                       juce::NormalisableRange<float> (-36.0f, -6.0f, 0.5f), -19.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramGate, 1 }, "Gate",
