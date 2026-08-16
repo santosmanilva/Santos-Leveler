@@ -26,16 +26,11 @@ public:
     {
         envelopeDb = -100.0f;
         currentGainDb = 0.0f;
+        currentMakeupDb = 0.0f;
     }
 
     void process (float& left, float& right, const Parameters& p) noexcept
     {
-        if (! p.enabled)
-        {
-            currentGainDb += timeConstantAlpha (20.0f) * (0.0f - currentGainDb);
-            return;
-        }
-
         const auto detectorLinear = std::max (std::abs (left), std::abs (right));
         const auto detectorDb = gainToDb (detectorLinear);
 
@@ -46,33 +41,39 @@ public:
             : timeConstantAlpha (safeReleaseMs);
         envelopeDb += envelopeAlpha * (detectorDb - envelopeDb);
 
-        const auto thresholdDb = std::clamp (p.thresholdDb, -36.0f, 0.0f);
-        const auto ratio = std::clamp (p.ratio, 1.0f, 10.0f);
-        constexpr float kneeDb = 6.0f;
-        const auto x = envelopeDb - thresholdDb;
-
         float targetReductionDb = 0.0f;
-        if (x <= -0.5f * kneeDb)
+
+        if (p.enabled)
         {
-            targetReductionDb = 0.0f;
-        }
-        else if (x >= 0.5f * kneeDb)
-        {
-            targetReductionDb = (thresholdDb + x / ratio) - envelopeDb;
-        }
-        else
-        {
-            const auto y = x + 0.5f * kneeDb;
-            targetReductionDb = (1.0f / ratio - 1.0f) * y * y / (2.0f * kneeDb);
+            const auto thresholdDb = std::clamp (p.thresholdDb, -36.0f, 0.0f);
+            const auto ratio = std::clamp (p.ratio, 1.0f, 10.0f);
+            constexpr float kneeDb = 6.0f;
+            const auto x = envelopeDb - thresholdDb;
+
+            if (x <= -0.5f * kneeDb)
+            {
+                targetReductionDb = 0.0f;
+            }
+            else if (x >= 0.5f * kneeDb)
+            {
+                targetReductionDb = (thresholdDb + x / ratio) - envelopeDb;
+            }
+            else
+            {
+                const auto y = x + 0.5f * kneeDb;
+                targetReductionDb = (1.0f / ratio - 1.0f) * y * y / (2.0f * kneeDb);
+            }
         }
 
         const auto gainAlpha = targetReductionDb < currentGainDb
             ? timeConstantAlpha (safeAttackMs)
-            : timeConstantAlpha (safeReleaseMs);
+            : timeConstantAlpha (p.enabled ? safeReleaseMs : 20.0f);
         currentGainDb += gainAlpha * (targetReductionDb - currentGainDb);
 
-        const auto makeupDb = std::clamp (p.makeupDb, 0.0f, 12.0f);
-        const auto totalGain = dbToGain (currentGainDb + makeupDb);
+        const auto targetMakeupDb = p.enabled ? std::clamp (p.makeupDb, 0.0f, 12.0f) : 0.0f;
+        currentMakeupDb += timeConstantAlpha (20.0f) * (targetMakeupDb - currentMakeupDb);
+
+        const auto totalGain = dbToGain (currentGainDb + currentMakeupDb);
         left *= totalGain;
         right *= totalGain;
     }
@@ -101,4 +102,5 @@ private:
     double sampleRate = 48000.0;
     float envelopeDb = -100.0f;
     float currentGainDb = 0.0f;
+    float currentMakeupDb = 0.0f;
 };
