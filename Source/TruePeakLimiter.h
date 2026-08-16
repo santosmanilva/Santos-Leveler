@@ -28,6 +28,14 @@ public:
         reset();
     }
 
+    void setCeilingDbTP (float dbTP) noexcept
+    {
+        ceilingDbTP = std::clamp (dbTP, -9.0f, -1.0f);
+        ceilingLinear = std::pow (10.0f, ceilingDbTP / 20.0f);
+    }
+
+    float getCeilingDbTP() const noexcept { return ceilingDbTP; }
+
     void reset() noexcept
     {
         for (auto& channel : detectorHistory)
@@ -56,8 +64,6 @@ public:
     {
         const auto truePeak = detectTruePeak (wetL, wetR);
         latestTruePeakLinear = truePeak;
-
-        constexpr float ceilingLinear = 0.891250938f; // -1.0 dBTP
 
         const auto requiredGain = truePeak > ceilingLinear
             ? std::clamp (ceilingLinear / std::max (truePeak, 1.0e-9f), 0.0f, 1.0f)
@@ -188,4 +194,6 @@ private:
     float releaseAlpha = 1.0f;
     int holdSamplesRemaining = 0;
     float latestTruePeakLinear = 0.0f;
+    float ceilingDbTP = -1.0f;
+    float ceilingLinear = 0.891250938f;
 };
