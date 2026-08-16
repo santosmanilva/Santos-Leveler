@@ -19,7 +19,9 @@ public:
         float releaseMs = 500.0f;
         float peakThresholdDb = -9.0f;
         float rangeDownDb = -12.0f;
+        float downStrengthPercent = 100.0f;
         float rangeUpDb = 9.0f;
+        float upStrengthPercent = 100.0f;
         float outputDb = 0.0f;
     };
 
@@ -122,6 +124,10 @@ public:
         if (controlCountdown <= 0)
         {
             const auto errorDb = p.targetDb - controlInputDb;
+            const auto downStrength = std::clamp (p.downStrengthPercent, 0.0f, 100.0f) * 0.01f;
+            const auto upStrength = std::clamp (p.upStrengthPercent, 0.0f, 100.0f) * 0.01f;
+            const auto scaledErrorDb = errorDb < 0.0f ? errorDb * downStrength
+                                                      : errorDb * upStrength;
             const auto minCorrectionDb = std::clamp (p.rangeDownDb, -12.0f, 0.0f);
             const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 12.0f);
 
@@ -160,7 +166,7 @@ public:
             }
 
             const auto rawCorrectionDb =
-                std::clamp (errorDb, minCorrectionDb, maxCorrectionDb);
+                std::clamp (scaledErrorDb, minCorrectionDb, maxCorrectionDb);
 
             auto preservedCorrectionDb = rawCorrectionDb;
 
