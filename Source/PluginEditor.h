@@ -277,10 +277,10 @@ private:
                                                                observedParent);
 
             auto safeThis = juce::Component::SafePointer<FactoryPresetButton> (this);
-            const auto flags = juce::FileBrowserComponent::saveMode
-                             | juce::FileBrowserComponent::canSelectFiles
-                             | juce::FileBrowserComponent::warnAboutOverwriting;
-            fileChooser->launchAsync (flags, [safeThis] (const juce::FileChooser& chooser)
+            const auto chooserFlags = juce::FileBrowserComponent::saveMode
+                                    | juce::FileBrowserComponent::canSelectFiles
+                                    | juce::FileBrowserComponent::warnAboutOverwriting;
+            fileChooser->launchAsync (chooserFlags, [safeThis] (const juce::FileChooser& chooser)
             {
                 if (safeThis == nullptr)
                     return;
@@ -320,9 +320,9 @@ private:
                                                                observedParent);
 
             auto safeThis = juce::Component::SafePointer<FactoryPresetButton> (this);
-            const auto flags = juce::FileBrowserComponent::openMode
-                             | juce::FileBrowserComponent::canSelectFiles;
-            fileChooser->launchAsync (flags, [safeThis] (const juce::FileChooser& chooser)
+            const auto chooserFlags = juce::FileBrowserComponent::openMode
+                                    | juce::FileBrowserComponent::canSelectFiles;
+            fileChooser->launchAsync (chooserFlags, [safeThis] (const juce::FileChooser& chooser)
             {
                 if (safeThis == nullptr)
                     return;
