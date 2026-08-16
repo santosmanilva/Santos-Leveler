@@ -54,6 +54,7 @@ public:
     float getTruePeakReductionDb() const noexcept { return truePeakLimiter.getGainReductionDb(); }
     float getDetectedTruePeakDbTP() const noexcept { return truePeakLimiter.getDetectedTruePeakDbTP(); }
     float getCompressorReductionDb() const noexcept { return compressorReductionDb.load (std::memory_order_relaxed); }
+    float getMomentaryLufs() const noexcept { return momentaryLufs.load (std::memory_order_relaxed); }
     float getShortTermLufs() const noexcept { return shortTermLufs.load (std::memory_order_relaxed); }
     float getIntegratedLufs() const noexcept { return integratedLufs.load (std::memory_order_relaxed); }
     float getOutputTruePeakDbTP() const noexcept { return outputTruePeakDbTP.load (std::memory_order_relaxed); }
@@ -102,6 +103,7 @@ private:
     std::atomic<float> finalOutputMeterDb { -100.0f };
     std::atomic<float> riderMeterDb { 0.0f };
     std::atomic<float> compressorReductionDb { 0.0f };
+    std::atomic<float> momentaryLufs { -100.0f };
     std::atomic<float> shortTermLufs { -100.0f };
     std::atomic<float> integratedLufs { -100.0f };
     std::atomic<float> outputTruePeakDbTP { -100.0f };
