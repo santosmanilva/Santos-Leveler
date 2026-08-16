@@ -63,10 +63,10 @@ private:
     SantosLookAndFeel lookAndFeel;
 
     juce::Slider targetKnob, gateKnob, speedKnob, detectKnob, lookaheadKnob, holdKnob, releaseKnob, peakThresholdKnob;
-    juce::Slider rangeDownSlider, rangeUpSlider, outputSlider;
+    juce::Slider rangeDownSlider, downStrengthSlider, rangeUpSlider, upStrengthSlider, outputSlider;
 
     juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel, peakThresholdLabel;
-    juce::Label rangeDownLabel, rangeUpLabel, outputLabel;
+    juce::Label rangeDownLabel, downStrengthLabel, rangeUpLabel, upStrengthLabel, outputLabel;
     juce::Label titleLabel, subtitleLabel;
 
     juce::TextButton aButton;
@@ -86,7 +86,9 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment releaseAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment peakThresholdAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment rangeDownAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment downStrengthAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment rangeUpAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment upStrengthAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment outputAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
