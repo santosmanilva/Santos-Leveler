@@ -38,7 +38,7 @@ private:
     class MeterComponent final : public juce::Component
     {
     public:
-        enum class Source { input, output };
+        enum class Source { input, levelerOutput };
         MeterComponent (SantosLevelerAudioProcessor& p, Source s, juce::String text, juce::Colour c)
             : processor (p), source (s), label (std::move (text)), colour (c) {}
         void paint (juce::Graphics&) override;
@@ -47,6 +47,15 @@ private:
         Source source;
         juce::String label;
         juce::Colour colour;
+    };
+
+    class FinalMeterComponent final : public juce::Component
+    {
+    public:
+        explicit FinalMeterComponent (SantosLevelerAudioProcessor& p) : processor (p) {}
+        void paint (juce::Graphics&) override;
+    private:
+        SantosLevelerAudioProcessor& processor;
     };
 
     class LoudnessMeterComponent final : public juce::Component
@@ -89,6 +98,7 @@ private:
     HistoryComponent history;
     MeterComponent inputMeter;
     MeterComponent outputMeter;
+    FinalMeterComponent finalMeter;
     LoudnessMeterComponent loudnessMeter;
 
     juce::AudioProcessorValueTreeState::SliderAttachment targetAttachment;
