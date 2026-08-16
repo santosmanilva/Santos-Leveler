@@ -12,6 +12,16 @@
 
 [English documentation](README_EN.md)
 
+## Descarga y manuales
+
+**[⬇ Descargar Santos Leveler v1.0.0 — Windows x64 VST3](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-Windows-x64-VST3.zip)**
+
+Última versión estable · Windows 10/11 x64 · VST3
+
+- **[Manual de usuario — Español (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-Manual-Usuario-ES.pdf)**
+- **[User Manual — English (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-User-Manual-EN.pdf)**
+- [Ver la Release v1.0.0](https://github.com/santosmanilva/Santos-Leveler/releases/tag/v1.0.0)
+
 ![Santos Leveler v1.0.0](docs/santos-leveler-v1.0.0.jpg)
 
 Santos Leveler es un procesador VST3 para voz diseñado para mantener un nivel más uniforme de forma automática, conservando naturalidad y ofreciendo control visual detallado del proceso. Está desarrollado en C++ con JUCE.
