@@ -7,6 +7,7 @@ on:
 
 env:
   BUILD_DIR: build/windows-ci
+  PRODUCT_VERSION: 1.0.0
 
 jobs:
   windows-vst3:
@@ -39,6 +40,6 @@ jobs:
       - name: Upload VST3 artifact
         uses: actions/upload-artifact@v6
         with:
-          name: SANTOS-LEVELER-Windows-x64-VST3
+          name: Santos-Leveler-v${{ env.PRODUCT_VERSION }}-Windows-x64-VST3
           path: package
           if-no-files-found: error
