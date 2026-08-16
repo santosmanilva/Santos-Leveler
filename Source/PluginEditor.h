@@ -125,13 +125,21 @@ private:
         static const std::array<Preset, 5>& presets()
         {
             static const std::array<Preset, 5> data {{
-                { "Santos Default", {{ -19.0f, -45.0f, 15.0f,  8.0f, 30.0f,  50.0f, 500.0f, -9.0f, -12.0f,  9.0f, 0.0f, 100.0f, 100.0f, 100.0f, 0.0f, -18.0f, 3.0f, 10.0f, 120.0f, 0.0f, -1.0f }} },
-                { "Gentle",         {{ -19.0f, -45.0f, 30.0f, 15.0f, 30.0f, 100.0f, 800.0f, -8.0f,  -8.0f,  6.0f, 0.0f,  65.0f,  65.0f,  70.0f, 0.0f, -18.0f, 2.5f, 15.0f, 160.0f, 0.0f, -1.0f }} },
-                { "Natural",        {{ -19.0f, -45.0f, 22.0f, 10.0f, 30.0f,  70.0f, 650.0f, -8.5f, -10.0f,  7.0f, 0.0f,  80.0f,  80.0f,  82.0f, 0.0f, -18.0f, 2.5f, 12.0f, 150.0f, 0.0f, -1.0f }} },
-                { "Broadcast",      {{ -19.0f, -45.0f, 15.0f,  8.0f, 30.0f,  50.0f, 500.0f, -9.0f, -12.0f,  9.0f, 0.0f, 100.0f, 100.0f, 100.0f, 1.0f, -18.0f, 3.0f, 10.0f, 120.0f, 0.0f, -1.0f }} },
-                { "Tight",          {{ -18.0f, -45.0f, 10.0f,  5.0f, 40.0f,  40.0f, 350.0f, -9.0f, -14.0f, 12.0f, 0.0f, 100.0f, 100.0f, 100.0f, 1.0f, -20.0f, 4.0f,  6.0f, 100.0f, 0.0f, -1.0f }} }
+                { "Default",   {{ -19.0f, -45.0f, 15.0f,  8.0f, 30.0f,  50.0f, 500.0f, -9.0f, -12.0f,  9.0f, 0.0f, 100.0f, 100.0f, 100.0f, 0.0f, -18.0f, 3.0f, 10.0f, 120.0f, 0.0f, -1.0f }} },
+                { "Gentle",    {{ -19.0f, -45.0f, 30.0f, 15.0f, 30.0f, 100.0f, 800.0f, -8.0f,  -8.0f,  6.0f, 0.0f,  65.0f,  65.0f,  70.0f, 0.0f, -18.0f, 2.5f, 15.0f, 160.0f, 0.0f, -1.0f }} },
+                { "Natural",   {{ -19.0f, -45.0f, 22.0f, 10.0f, 30.0f,  70.0f, 650.0f, -8.5f, -10.0f,  7.0f, 0.0f,  80.0f,  80.0f,  82.0f, 0.0f, -18.0f, 2.5f, 12.0f, 150.0f, 0.0f, -1.0f }} },
+                { "Broadcast", {{ -19.0f, -45.0f, 15.0f,  8.0f, 30.0f,  50.0f, 500.0f, -9.0f, -12.0f,  9.0f, 0.0f, 100.0f, 100.0f, 100.0f, 1.0f, -18.0f, 3.0f, 10.0f, 120.0f, 0.0f, -1.0f }} },
+                { "Tight",     {{ -18.0f, -45.0f, 10.0f,  5.0f, 40.0f,  40.0f, 350.0f, -9.0f, -14.0f, 12.0f, 0.0f, 100.0f, 100.0f, 100.0f, 1.0f, -20.0f, 4.0f,  6.0f, 100.0f, 0.0f, -1.0f }} }
             }};
             return data;
+        }
+
+        static juce::File presetFolder()
+        {
+            auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                              .getChildFile ("Santos Leveler Presets");
+            folder.createDirectory();
+            return folder;
         }
 
         void showMenu()
@@ -141,12 +149,22 @@ private:
             for (int i = 0; i < static_cast<int> (p.size()); ++i)
                 menu.addItem (i + 1, p[static_cast<std::size_t> (i)].name);
 
+            menu.addSeparator();
+            menu.addItem (100, "Save Preset...");
+            menu.addItem (101, "Load Preset...");
+
             auto safeThis = juce::Component::SafePointer<FactoryPresetButton> (this);
             menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
                                 [safeThis] (int result)
                                 {
-                                    if (safeThis != nullptr && result > 0)
+                                    if (safeThis == nullptr)
+                                        return;
+                                    if (result >= 1 && result <= 5)
                                         safeThis->applyPreset (result - 1);
+                                    else if (result == 100)
+                                        safeThis->savePreset();
+                                    else if (result == 101)
+                                        safeThis->loadPreset();
                                 });
         }
 
@@ -158,14 +176,110 @@ private:
 
             const auto& values = p[static_cast<std::size_t> (index)].values;
             for (std::size_t i = 0; i < parameterIds.size(); ++i)
+                setParameterValue (parameterIds[i], values[i]);
+        }
+
+        void setParameterValue (const juce::String& id, float value)
+        {
+            if (auto* parameter = processor.apvts.getParameter (id))
             {
-                if (auto* parameter = processor.apvts.getParameter (parameterIds[i]))
-                {
-                    parameter->beginChangeGesture();
-                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (values[i]));
-                    parameter->endChangeGesture();
-                }
+                parameter->beginChangeGesture();
+                parameter->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, parameter->convertTo0to1 (value)));
+                parameter->endChangeGesture();
             }
+        }
+
+        void savePreset()
+        {
+            auto initial = presetFolder().getChildFile ("My Preset.slpreset");
+            fileChooser = std::make_unique<juce::FileChooser> ("Save Santos Leveler preset",
+                                                               initial,
+                                                               "*.slpreset",
+                                                               true,
+                                                               false,
+                                                               observedParent);
+
+            auto safeThis = juce::Component::SafePointer<FactoryPresetButton> (this);
+            const auto flags = juce::FileBrowserComponent::saveMode
+                             | juce::FileBrowserComponent::canSelectFiles
+                             | juce::FileBrowserComponent::warnAboutOverwriting;
+            fileChooser->launchAsync (flags, [safeThis] (const juce::FileChooser& chooser)
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                auto file = chooser.getResult();
+                if (file == juce::File())
+                    return;
+                if (! file.hasFileExtension ("slpreset"))
+                    file = file.withFileExtension ("slpreset");
+
+                juce::XmlElement root ("SANTOS_LEVELER_PRESET");
+                root.setAttribute ("version", 1);
+                for (const auto* id : parameterIds)
+                {
+                    if (auto* value = safeThis->processor.apvts.getRawParameterValue (id))
+                    {
+                        auto* parameter = root.createNewChildElement ("PARAM");
+                        parameter->setAttribute ("id", id);
+                        parameter->setAttribute ("value", static_cast<double> (value->load()));
+                    }
+                }
+
+                if (! root.writeTo (file))
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                            "Santos Leveler",
+                                                            "The preset could not be saved.");
+            });
+        }
+
+        void loadPreset()
+        {
+            fileChooser = std::make_unique<juce::FileChooser> ("Load Santos Leveler preset",
+                                                               presetFolder(),
+                                                               "*.slpreset",
+                                                               true,
+                                                               false,
+                                                               observedParent);
+
+            auto safeThis = juce::Component::SafePointer<FactoryPresetButton> (this);
+            const auto flags = juce::FileBrowserComponent::openMode
+                             | juce::FileBrowserComponent::canSelectFiles;
+            fileChooser->launchAsync (flags, [safeThis] (const juce::FileChooser& chooser)
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                const auto file = chooser.getResult();
+                if (file == juce::File())
+                    return;
+
+                auto xml = juce::XmlDocument::parse (file);
+                if (xml == nullptr || ! xml->hasTagName ("SANTOS_LEVELER_PRESET"))
+                {
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                            "Santos Leveler",
+                                                            "This is not a valid Santos Leveler preset.");
+                    return;
+                }
+
+                for (auto* child = xml->getFirstChildElement(); child != nullptr; child = child->getNextElement())
+                {
+                    if (! child->hasTagName ("PARAM"))
+                        continue;
+
+                    const auto id = child->getStringAttribute ("id");
+                    const auto value = static_cast<float> (child->getDoubleAttribute ("value"));
+                    for (const auto* allowedId : parameterIds)
+                    {
+                        if (id == allowedId)
+                        {
+                            safeThis->setParameterValue (id, value);
+                            break;
+                        }
+                    }
+                }
+            });
         }
 
         void componentMovedOrResized (juce::Component&, bool, bool wasResized) override
@@ -186,6 +300,7 @@ private:
 
         SantosLevelerAudioProcessor& processor;
         juce::Component* observedParent = nullptr;
+        std::unique_ptr<juce::FileChooser> fileChooser;
     };
 
     void timerCallback() override;
