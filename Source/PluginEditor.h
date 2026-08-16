@@ -69,6 +69,7 @@ private:
     juce::Label rangeDownLabel, downStrengthLabel, rangeUpLabel, upStrengthLabel, outputLabel;
     juce::Label titleLabel, subtitleLabel;
 
+    juce::TextButton resetLoudnessButton;
     juce::TextButton aButton;
     juce::TextButton bButton;
     juce::TextButton bypassButton;
