@@ -61,7 +61,7 @@ public:
     bool isABStateB() const noexcept { return abStateBSelected.load (std::memory_order_relaxed); }
 
 private:
-    using ABState = std::array<float, 13>;
+    using ABState = std::array<float, 14>;
 
     ABState captureCurrentABState() const;
     void applyABState (const ABState& state);
