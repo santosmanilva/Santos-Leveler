@@ -1,25 +1,33 @@
-# Código fuente público / Public source notice
+# Código abierto / Open-source notice
 
-Santos Leveler puede publicarse en GitHub con su código fuente visible sin convertirse por ello en software open source.
+## Español
 
-La licencia del proyecto distingue entre:
+Santos Leveler es **software libre y de código abierto** bajo **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.
 
-- **Plugin compilado:** freeware para uso personal y profesional conforme a `LICENSE`.
-- **Código fuente:** visible para inspección, referencia educativa, transparencia e historia del proyecto, pero propietario y con todos los derechos reservados salvo los expresamente concedidos en `LICENSE` y los derechos necesarios derivados de las condiciones de servicio de GitHub.
+Esto significa que cualquier persona puede usar, estudiar, copiar, modificar y redistribuir el código conforme a los términos de AGPLv3. Las versiones modificadas o redistribuidas deben mantener las obligaciones de la licencia y facilitar el código fuente correspondiente cuando proceda.
 
-Un repositorio público permite técnicamente ver, clonar y hacer fork del código en GitHub. Esa capacidad técnica no implica permiso para vender, redistribuir, publicar versiones modificadas, crear distribuciones derivadas o presentar versiones modificadas como oficiales de Santos Leveler.
+La licencia AGPL también contempla el caso de versiones modificadas que se ponen a disposición de usuarios para interactuar con ellas a través de una red.
 
-Cualquier persona que compile, modifique o distribuya una copia propia debe además cumplir las licencias de terceros aplicables, incluidas las correspondientes a JUCE y VST3.
+La licencia del código no concede derechos sobre la identidad visual del proyecto. Las versiones modificadas deben identificarse claramente como tales y no deben presentarse como versiones oficiales de Santos Leveler sin autorización.
+
+Las dependencias de terceros conservan sus propias licencias. Consulte [THIRD_PARTY.md](THIRD_PARTY.md).
+
+Texto oficial de la licencia AGPLv3:
+https://www.gnu.org/licenses/agpl-3.0.html
 
 ---
 
-Santos Leveler may be published on GitHub with publicly visible source code without thereby becoming open-source software.
+## English
 
-The project licence distinguishes between:
+Santos Leveler is **free and open-source software** licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.
 
-- **Compiled plug-in:** freeware for personal and professional use under `LICENSE`.
-- **Source code:** publicly visible for inspection, educational reference, transparency and project history, but proprietary and all rights reserved except those expressly granted in `LICENSE` and rights necessarily arising from GitHub's terms of service.
+Anyone may use, study, copy, modify and redistribute the code under the terms of AGPLv3. Modified or redistributed versions must preserve the licence obligations and provide the corresponding source code where required.
 
-A public repository technically permits users to view, clone and fork the code on GitHub. That technical capability does not constitute permission to sell, redistribute, publish modified versions, create derivative distributions, or present modified versions as official Santos Leveler releases.
+The AGPL also addresses modified versions made available for users to interact with over a network.
 
-Anyone building, modifying or distributing their own copy is additionally responsible for complying with applicable third-party licences, including JUCE and VST3 licensing requirements.
+The software licence does not grant rights to the project's visual identity. Modified versions should be clearly identified as modified and must not be presented as official Santos Leveler releases without authorisation.
+
+Third-party dependencies remain subject to their own licences. See [THIRD_PARTY.md](THIRD_PARTY.md).
+
+Official AGPLv3 licence text:
+https://www.gnu.org/licenses/agpl-3.0.html
