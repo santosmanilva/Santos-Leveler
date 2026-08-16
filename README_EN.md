@@ -4,6 +4,8 @@
 
 [Documentación en español](README.md)
 
+![Santos Leveler v1.0.0](docs/santos-leveler-v1.0.0.webp)
+
 Santos Leveler is a voice dynamics processor designed to keep speech at a more consistent level automatically while preserving natural dynamics and providing detailed visual feedback. It is written in C++ with JUCE and distributed as **freeware** for personal and professional use.
 
 **Designed & Developed by Santos Leveler Project.**
