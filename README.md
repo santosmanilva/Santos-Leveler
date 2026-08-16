@@ -1,6 +1,6 @@
 # Santos Leveler v1.0.0
 
-**Voice Auto Level Rider · VST3 · Windows x64 · Freeware**
+**Voice Auto Level Rider · VST3 · Windows x64 · Open Source**
 
 [![Build Windows VST3](https://github.com/santosmanilva/SANTOS-LEVELER/actions/workflows/build-windows-vst3.yml/badge.svg)](https://github.com/santosmanilva/SANTOS-LEVELER/actions/workflows/build-windows-vst3.yml)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
@@ -8,52 +8,55 @@
 ![Format](https://img.shields.io/badge/format-VST3-orange)
 ![JUCE](https://img.shields.io/badge/JUCE-8.0.12-4c8bf5)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C)
-![License](https://img.shields.io/badge/license-Freeware-brightgreen)
+![License](https://img.shields.io/badge/license-AGPL--3.0-brightgreen)
 
 [English documentation](README_EN.md)
 
 ![Santos Leveler v1.0.0](docs/santos-leveler-v1.0.0.jpg)
 
-Santos Leveler es un procesador de dinámica para voz diseñado para mantener un nivel más uniforme de forma automática, conservando naturalidad y ofreciendo control visual detallado del proceso. Está desarrollado en C++ con JUCE y se distribuye como **freeware** para uso personal y profesional.
+Santos Leveler es un procesador VST3 para voz diseñado para mantener un nivel más uniforme de forma automática, conservando naturalidad y ofreciendo control visual detallado del proceso. Está desarrollado en C++ con JUCE.
 
 **Diseñado y desarrollado por Santos Leveler Project.**
 
-> Santos Leveler es freeware, no software de código abierto. El permiso de uso del binario está definido en [LICENSE](LICENSE). El código fuente y los derechos asociados permanecen reservados salvo indicación expresa en dicha licencia.
+> Santos Leveler es **software libre y de código abierto** bajo **GNU Affero General Public License v3.0 (AGPL-3.0-only)**. Puedes usar, estudiar, modificar y redistribuir el código conforme a los términos de AGPLv3. Consulta [LICENSE](LICENSE).
+
+## Historia del proyecto
+
+Los primeros prototipos de Santos Leveler se crearon en **[MNodes](https://marionietoworld.com/mnodes/)**, el entorno modular de audio desarrollado por **Mario Nieto**. MNodes permitió explorar y validar inicialmente la idea del nivelador automático de voz antes de reimplementar el proyecto como plugin VST3 nativo en C++/JUCE.
+
+El archivo `historical MNodes prototype` se conserva únicamente como referencia histórica de esa etapa. La versión actual no depende de MNodes en tiempo de ejecución.
+
+Más información: [HISTORY.md](HISTORY.md).
 
 ## Compatibilidad
 
 - Windows 10/11 x64
-- Formato VST3 de 64 bits
-- Efecto de audio, no instrumento
-- Pistas mono y estéreo
+- VST3 de 64 bits
+- Efecto de audio para pistas mono y estéreo
 - Procesamiento estéreo enlazado
 - Interfaz redimensionable
-- Tamaño inicial compacto: **1310 × 640**
-- Tamaño máximo de interfaz: **2625 × 1280**
-- No requiere MNodes ni JUCE instalados en el equipo de destino
-- No incluye versión Standalone
-
-El archivo `historical MNodes prototype` se conserva únicamente como referencia histórica del prototipo original. La versión VST3 actual es una implementación nativa e independiente.
+- Tamaño inicial: **1310 × 640**
+- Tamaño máximo: **2625 × 1280**
+- Sin versión Standalone
 
 ## Características principales
 
-- **Voice Auto Level Rider** con control Target, Gate, Speed, Detect, Lookahead, Hold y Release.
-- **Detector FAST/SLOW** combinado para equilibrar respuesta rápida y estabilidad.
-- **Smart Gate** con histéresis para evitar elevar ruido o ambiente cuando no hay voz útil.
-- **Preserve Dynamics** para reducir el exceso de corrección descendente sobre dinámica vocal sostenida.
-- Rangos independientes **Range Down / Range Up** de hasta ±16 dB.
-- Controles **Down Strength / Up Strength** para suavizar la cantidad de corrección aplicada.
-- **Intensity** global para escalar la acción del Rider y Peak 2 sin desactivar Output ni True Peak.
-- **Peak 2**, etapa interna de control de picos con ataque rápido y release adaptativo.
+- **Voice Auto Level Rider** con Target, Gate, Speed, Detect, Lookahead, Hold y Release.
+- Detector combinado **FAST/SLOW**.
+- **Smart Gate** con histéresis.
+- **Preserve Dynamics**.
+- **Range Down / Range Up** hasta ±16 dB.
+- **Down Strength / Up Strength**.
+- **Intensity** global para Rider y Peak 2.
+- **Peak 2** con release adaptativo.
 - Módulo **Dynamics** con compresor de voz feed-forward, estéreo enlazado y soft knee.
-- **True Peak Limiter** estéreo enlazado con Ceiling ajustable de -9 a -1 dBTP.
-- Medidores de pico dBFS para Input, Leveler Out y Final Out.
-- Medición **True Peak dBTP** y loudness **LUFS-M / LUFS-S / LUFS-I** sobre la salida final.
-- Gráfica **Live Response** con trazas INPUT, RIDER, PEAK y LEVELER OUT activables individualmente con clic sobre su leyenda.
-- Memorias **A/B** para comparar dos configuraciones de sonido.
+- **True Peak Limiter** con Ceiling ajustable de -9 a -1 dBTP.
+- Medidores de pico para Input, Leveler Out y Final Out.
+- Medición **True Peak dBTP** y **LUFS-M / LUFS-S / LUFS-I**.
+- Gráfica **Live Response** con INPUT, RIDER, PEAK y LEVELER OUT activables individualmente.
+- Memorias **A/B**.
 - Presets de fábrica y presets de usuario `.slpreset`.
-- **Bypass alineado en latencia**, manteniendo el motor activo para una transición limpia.
-- Ventana About integrada con información de versión, autor, licencia y contacto.
+- **Bypass alineado en latencia**.
 
 ## Cadena de señal
 
@@ -61,7 +64,7 @@ El archivo `historical MNodes prototype` se conserva únicamente como referencia
 INPUT
   ↓
 Voice Auto Level Rider
-  ├─ detector FAST/SLOW
+  ├─ FAST/SLOW detector
   ├─ Smart Gate
   ├─ Preserve Dynamics
   ├─ Range / Strength / Intensity
@@ -75,106 +78,75 @@ True Peak Limiter
   ↓
 Bypass alineado
   ↓
-Medición final: Peak / True Peak / LUFS
+Peak / True Peak / LUFS
   ↓
 OUTPUT
 ```
 
-## Parámetros y valores Default v1.0.0
+## Parámetros Default v1.0.0
 
-| Parámetro | Rango | Default |
-|---|---:|---:|
-| Target | -36…-6 dB | -19 dB |
-| Gate | -70…-25 dB | -40 dB |
-| Speed | 2…250 ms | 79 ms |
-| Detect | 1…100 ms | 8 ms |
-| Lookahead | 0…100 ms | 30 ms |
-| Hold | 0…1000 ms | 100 ms |
-| Release | 50…3000 ms | 100 ms |
-| Peak | -18…-1 dBFS | -8 dBFS |
-| Range Down | -16…0 dB | -12 dB |
-| Down Strength | 0…100 % | 69 % |
-| Range Up | 0…+16 dB | +15 dB |
-| Up Strength | 0…100 % | 50 % |
-| Leveler Out | -12…+12 dB | 0 dB |
-| Intensity | 0…100 % | 100 % |
-| Compressor | Off / On | On |
-| Comp Threshold | -36…0 dB | -20 dB |
-| Comp Ratio | 1:1…10:1 | 3:1 |
-| Comp Attack | 0.5…100 ms | 10 ms |
-| Comp Release | 20…1000 ms | 120 ms |
-| Comp Makeup | 0…+12 dB | +2 dB |
-| Ceiling | -9…-1 dBTP | -1 dBTP |
-| Bypass | Off / On | Off |
+| Parámetro | Default |
+|---|---:|
+| Gate | -40 dB |
+| Target | -19 dB |
+| Speed | 79 ms |
+| Detect | 8 ms |
+| Lookahead | 30 ms |
+| Hold | 100 ms |
+| Release | 100 ms |
+| Peak | -8 dBFS |
+| Range Down | -12 dB |
+| Down Strength | 69 % |
+| Range Up | +15 dB |
+| Up Strength | 50 % |
+| Leveler Out | 0 dB |
+| Intensity | 100 % |
+| Compressor | On |
+| Comp Threshold | -20 dB |
+| Comp Ratio | 3:1 |
+| Comp Attack | 10 ms |
+| Comp Release | 120 ms |
+| Comp Makeup | +2 dB |
+| Ceiling | -1 dBTP |
+| Bypass | Off |
 
 ## Presets
 
-Los presets de fábrica incluidos son **Default, Gentle, Natural, Broadcast y Tight**. El preset Default coincide con los valores iniciales de una instancia nueva.
+Presets de fábrica: **Default, Gentle, Natural, Broadcast y Tight**.
 
-Los presets de usuario se guardan con extensión `.slpreset`, por defecto en:
+Los presets de usuario utilizan extensión `.slpreset` y se guardan por defecto en:
 
 ```text
 Documentos\Santos Leveler Presets
 ```
 
-Los presets contienen los parámetros de sonido. El estado de Bypass y las memorias A/B no se incluyen. La visibilidad de las trazas de la gráfica es una preferencia visual guardada con el estado de la instancia/proyecto, no con los presets.
-
-## Gráfica Live Response
-
-La gráfica central permite activar o desactivar cada traza haciendo clic en su nombre:
-
-- **INPUT** — cian
-- **RIDER** — amarillo
-- **PEAK** — magenta
-- **LEVELER OUT** — verde
-
-La traza PEAK representa reducción, por lo que visualmente parte de **0 dB en la zona superior** y desciende hasta -18 dB. Esto evita ocupar innecesariamente el centro de la gráfica cuando Peak 2 no está actuando.
-
-Cuando el host proporciona estado de transporte, el historial deja de avanzar al detener/pausar el DAW y continúa al volver a reproducir.
-
 ## Medición
 
-Los medidores visibles de nivel utilizan lectura de pico, no RMS:
-
 - **INPUT:** pico dBFS
-- **LEVELER OUT:** pico dBFS antes del módulo Dynamics
+- **LEVELER OUT:** pico dBFS antes de Dynamics
 - **FINAL OUT:** pico dBFS después de compresor, True Peak y bypass final
-- **TRUE PEAK:** dBTP mediante sobremuestreo
-- **LOUDNESS:** LUFS-M, LUFS-S y LUFS-I sobre la salida final
+- **TRUE PEAK:** dBTP
+- **LOUDNESS:** LUFS-M, LUFS-S y LUFS-I
 
-El medidor de loudness está basado en los algoritmos de **ITU-R BS.1770-5** y conceptos de medición EBU R128/Tech 3341. No se presenta como un medidor EBU Mode certificado.
-
-## Diseño DSP
-
-El motor de nivelado vive principalmente en `Source/LevelerEngine.h` y trabaja con decisión de control a aproximadamente **240 Hz**, mientras la ganancia se interpola por muestra.
-
-El True Peak Limiter se encuentra en `Source/TruePeakLimiter.h`. Emplea interpolación sobremuestreada de 4 fases, 12 taps por fase, enlace estéreo y 1 ms de lookahead. El Ceiling es independiente de Intensity.
-
-El compresor de voz está implementado en `Source/VoiceCompressor.h` y trabaja antes del True Peak Limiter.
-
-La medición de loudness y True Peak de salida se encuentra en `Source/LoudnessMeter.h`.
+La medición de loudness se basa en algoritmos de **ITU-R BS.1770-5** y conceptos de EBU R128/Tech 3341. Santos Leveler no se presenta como equipo de medida certificado.
 
 ## Compilar en Windows
 
-### Requisitos
+Requisitos:
 
 1. Visual Studio 2022 con **Desarrollo para el escritorio con C++**.
 2. CMake 3.22 o superior.
 3. Git for Windows.
 
-El proyecto usa C++17 y descarga automáticamente **JUCE 8.0.12** durante la configuración mediante CMake FetchContent.
-
-### Compilación con script
-
-Desde PowerShell en la carpeta del proyecto:
+El proyecto usa C++17 y obtiene **JUCE 8.0.12** mediante CMake FetchContent.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-El script configura el proyecto, compila **SantosLeveler_VST3** y **SantosLevelerDSPTests**, ejecuta los tests DSP y muestra la ubicación del bundle VST3 generado.
+El script compila `SantosLeveler_VST3` y `SantosLevelerDSPTests`, ejecuta los tests DSP y muestra la ubicación del VST3 generado.
 
-### Instalación local
+## Instalación
 
 Copiar la carpeta completa `Santos Leveler.vst3` a:
 
@@ -182,48 +154,29 @@ Copiar la carpeta completa `Santos Leveler.vst3` a:
 C:\Program Files\Common Files\VST3
 ```
 
-También puede utilizarse, desde PowerShell con los permisos necesarios:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
-```
-
-Después debe realizarse un rescan de plugins VST3 en el DAW.
-
-## GitHub Actions
-
-El workflow `.github/workflows/build-windows-vst3.yml` compila en **Windows Server 2022**, ejecuta los tests DSP y genera el artefacto:
-
-```text
-Santos-Leveler-v1.0.0-Windows-x64-VST3
-```
-
-El paquete incluye el bundle VST3 y `LICENSE`.
-
-## Tests DSP
-
-`Tests/LevelerDSPTests.cpp` comprueba, entre otros puntos:
-
-- corrección ascendente y descendente del Rider;
-- Strength y rangos extendidos ±16 dB;
-- Intensity al 0 %;
-- comportamiento de Gate y Output trim;
-- bypass funcional del compresor y reducción con COMP activo;
-- latencia y Ceiling del True Peak Limiter a -1 y -3 dBTP;
-- LUFS-M, LUFS-S, LUFS-I y True Peak del medidor interno;
-- reset de Integrated y True Peak máximo.
-
-En la candidata final v1.0.0 la compilación Release y `SantosLevelerDSPTests.exe` se validaron correctamente con código de salida 0.
+Después, realizar un rescan de plugins VST3 en el DAW.
 
 ## Licencia
 
-Santos Leveler se distribuye como **freeware**. El binario puede utilizarse gratuitamente para fines personales y profesionales conforme a [LICENSE](LICENSE). No es software open source y la licencia no concede permiso general para vender, modificar o redistribuir el software.
+Santos Leveler se publica bajo **GNU Affero General Public License v3.0, exclusivamente versión 3 (`AGPL-3.0-only`)**.
 
-Se incluye una traducción al español en el propio archivo `LICENSE` a título informativo; la versión inglesa es la que gobierna en caso de discrepancia.
+La licencia permite usar, estudiar, modificar y redistribuir el software bajo sus condiciones de copyleft. Las redistribuciones y versiones modificadas deben cumplir las obligaciones de AGPLv3, incluido el acceso al código fuente correspondiente cuando sea exigible.
 
-El proyecto utiliza dependencias de terceros. Consulte [THIRD_PARTY.md](THIRD_PARTY.md) para información sobre JUCE y VST3.
+Texto oficial: https://www.gnu.org/licenses/agpl-3.0.html
+
+Consulte también:
+
+- [LICENSE](LICENSE)
+- [PUBLIC_SOURCE_NOTICE.md](PUBLIC_SOURCE_NOTICE.md)
+- [THIRD_PARTY.md](THIRD_PARTY.md)
+
+## Aviso técnico y responsabilidad
+
+El software se proporciona sin garantía en los términos establecidos por AGPLv3. Las funciones de loudness, pico y True Peak forman parte del flujo de procesamiento y no convierten Santos Leveler en equipo de medición certificado ni garantizan el cumplimiento de una especificación de emisión o entrega concreta.
+
+Las versiones modificadas deben identificarse claramente como tales y no deben presentarse como versiones oficiales o respaldadas por Santos Leveler sin autorización.
 
 ## Contacto
 
 **Santos Leveler Project**  
-GitHub: `github.com/santosmanilva/SANTOS-LEVELER`
+GitHub: `github.com/santosmanilva/Santos-Leveler`
