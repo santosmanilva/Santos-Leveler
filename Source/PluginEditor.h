@@ -31,7 +31,6 @@ private:
     public:
         explicit HistoryComponent (SantosLevelerAudioProcessor& p) : processor (p) {}
         void paint (juce::Graphics&) override;
-
     private:
         SantosLevelerAudioProcessor& processor;
     };
@@ -43,7 +42,6 @@ private:
         MeterComponent (SantosLevelerAudioProcessor& p, Source s, juce::String text, juce::Colour c)
             : processor (p), source (s), label (std::move (text)), colour (c) {}
         void paint (juce::Graphics&) override;
-
     private:
         SantosLevelerAudioProcessor& processor;
         Source source;
@@ -56,7 +54,6 @@ private:
     public:
         explicit LoudnessMeterComponent (SantosLevelerAudioProcessor& p) : processor (p) {}
         void paint (juce::Graphics&) override;
-
     private:
         SantosLevelerAudioProcessor& processor;
     };
@@ -75,16 +72,19 @@ private:
     juce::Slider targetKnob, gateKnob, speedKnob, detectKnob, lookaheadKnob, holdKnob, releaseKnob, peakThresholdKnob;
     juce::Slider rangeDownSlider, downStrengthSlider, rangeUpSlider, upStrengthSlider, outputSlider;
     juce::Slider intensitySlider;
+    juce::Slider compThresholdKnob, compRatioKnob, compAttackKnob, compReleaseKnob, compMakeupKnob, ceilingKnob;
 
     juce::Label targetLabel, gateLabel, speedLabel, detectLabel, lookaheadLabel, holdLabel, releaseLabel, peakThresholdLabel;
     juce::Label rangeDownLabel, downStrengthLabel, rangeUpLabel, upStrengthLabel, outputLabel;
     juce::Label intensityLabel;
+    juce::Label compThresholdLabel, compRatioLabel, compAttackLabel, compReleaseLabel, compMakeupLabel, ceilingLabel;
     juce::Label titleLabel, subtitleLabel;
 
     juce::TextButton resetLoudnessButton;
     juce::TextButton aButton;
     juce::TextButton bButton;
     juce::TextButton bypassButton;
+    juce::TextButton compButton;
 
     HistoryComponent history;
     MeterComponent inputMeter;
@@ -105,6 +105,13 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment upStrengthAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment outputAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment intensityAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment compThresholdAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment compRatioAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment compAttackAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment compReleaseAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment compMakeupAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment ceilingAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment compEnabledAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SantosLevelerAudioProcessorEditor)
