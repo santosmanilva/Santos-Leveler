@@ -16,11 +16,12 @@ constexpr auto paramRangeUp       = "rangeUp";
 constexpr auto paramOutput        = "output";
 constexpr auto paramDownStrength  = "downStrength";
 constexpr auto paramUpStrength    = "upStrength";
+constexpr auto paramIntensity     = "intensity";
 constexpr auto paramBypass        = "bypass";
 
-// Keep the original 11 A/B indices intact for backward-compatible project recall.
+// Keep the original 13 A/B indices intact for backward-compatible project recall.
 // New parameters are appended rather than inserted into the stored bank layout.
-constexpr std::array<const char*, 13> abParameterIds {
+constexpr std::array<const char*, 14> abParameterIds {
     paramTarget,
     paramGate,
     paramSpeed,
@@ -33,7 +34,8 @@ constexpr std::array<const char*, 13> abParameterIds {
     paramRangeUp,
     paramOutput,
     paramDownStrength,
-    paramUpStrength
+    paramUpStrength,
+    paramIntensity
 };
 
 juce::Identifier abPropertyName (const char* prefix, std::size_t index)
@@ -96,11 +98,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::AudioParameterFloatAttributes().withLabel ("dBFS")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeDown, 1 }, "Range Down",
-                                       juce::NormalisableRange<float> (-12.0f, 0.0f, 0.5f), -12.0f,
+                                       juce::NormalisableRange<float> (-16.0f, 0.0f, 0.5f), -12.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeUp, 1 }, "Range Up",
-                                       juce::NormalisableRange<float> (0.0f, 12.0f, 0.5f), 9.0f,
+                                       juce::NormalisableRange<float> (0.0f, 16.0f, 0.5f), 9.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramOutput, 1 }, "Output",
@@ -112,6 +114,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
 
     layout.add (std::make_unique<APF> (juce::ParameterID { paramUpStrength, 1 }, "Up Strength",
+                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("%")));
+
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramIntensity, 1 }, "Intensity",
                                        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
 
@@ -263,6 +269,7 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     p.downStrengthPercent = apvts.getRawParameterValue(paramDownStrength)->load();
     p.rangeUpDb = apvts.getRawParameterValue(paramRangeUp)->load();
     p.upStrengthPercent = apvts.getRawParameterValue(paramUpStrength)->load();
+    p.intensityPercent = apvts.getRawParameterValue(paramIntensity)->load();
     p.outputDb = apvts.getRawParameterValue(paramOutput)->load();
 
     const auto bypassTarget = apvts.getRawParameterValue(paramBypass)->load() >= 0.5f ? 1.0f : 0.0f;
@@ -376,8 +383,8 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             if (!transportKnown || playing)
             {
                 const auto telemetrySnapshot = telemetry;
-                const auto minCorrectionDb = std::clamp(p.rangeDownDb, -12.0f, 0.0f);
-                const auto maxCorrectionDb = std::clamp(p.rangeUpDb, 0.0f, 12.0f);
+                const auto minCorrectionDb = std::clamp(p.rangeDownDb, -16.0f, 0.0f);
+                const auto maxCorrectionDb = std::clamp(p.rangeUpDb, 0.0f, 16.0f);
 
                 SantosHistoryPoint snapshot;
                 snapshot.inputDb = historyAlignedInputDb;
