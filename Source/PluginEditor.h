@@ -19,8 +19,8 @@ private:
     public:
         SantosLookAndFeel();
         void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
-                               float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
-                               juce::Slider&) override;
+                               float sliderPos, float minSliderPos, float maxSliderPos,
+                               juce::Slider::SliderStyle, juce::Slider&) override;
         void drawLinearSlider (juce::Graphics&, int x, int y, int width, int height,
                                float sliderPos, float minSliderPos, float maxSliderPos,
                                juce::Slider::SliderStyle, juce::Slider&) override;
@@ -47,6 +47,9 @@ private:
         Source source;
         juce::String label;
         juce::Colour colour;
+        float heldPeakDb = -100.0f;
+        double peakHoldUntilMs = 0.0;
+        double lastPeakUpdateMs = 0.0;
     };
 
     class FinalMeterComponent final : public juce::Component
@@ -56,6 +59,9 @@ private:
         void paint (juce::Graphics&) override;
     private:
         SantosLevelerAudioProcessor& processor;
+        float heldPeakDb = -100.0f;
+        double peakHoldUntilMs = 0.0;
+        double lastPeakUpdateMs = 0.0;
     };
 
     class LoudnessMeterComponent final : public juce::Component
