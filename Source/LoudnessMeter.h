@@ -50,6 +50,8 @@ public:
         blockHistoryCount = 0;
         samplesInCurrent100ms = 0;
         integrated400msEnergies.clear();
+        integrated100msBlocksSinceReset = 0;
+        integratedUpdateCounter = 0;
         shortTermLufs = -100.0f;
         integratedLufs = -100.0f;
         resetTruePeak();
@@ -58,6 +60,8 @@ public:
     void resetIntegratedAndTruePeak() noexcept
     {
         integrated400msEnergies.clear();
+        integrated100msBlocksSinceReset = 0;
+        integratedUpdateCounter = 0;
         integratedLufs = -100.0f;
         resetTruePeak();
     }
@@ -94,13 +98,13 @@ private:
             const auto k = 2.0 * std::max (1.0, sr);
             const auto k2 = k * k;
 
-            auto db0 = da0 * k2 + da1 * k + da2;
-            auto db1 = -2.0 * da0 * k2 + 2.0 * da2;
-            auto db2 = da0 * k2 - da1 * k + da2;
+            const auto db0 = da0 * k2 + da1 * k + da2;
+            const auto db1 = -2.0 * da0 * k2 + 2.0 * da2;
+            const auto db2 = da0 * k2 - da1 * k + da2;
 
-            auto nbz0 = nb0 * k2 + nb1 * k + nb2;
-            auto nbz1 = -2.0 * nb0 * k2 + 2.0 * nb2;
-            auto nbz2 = nb0 * k2 - nb1 * k + nb2;
+            const auto nbz0 = nb0 * k2 + nb1 * k + nb2;
+            const auto nbz1 = -2.0 * nb0 * k2 + 2.0 * nb2;
+            const auto nbz2 = nb0 * k2 - nb1 * k + nb2;
 
             const auto invA0 = 1.0 / std::max (1.0e-30, db0);
             b0 = static_cast<float> (nbz0 * invA0);
@@ -163,6 +167,7 @@ private:
         block100msHistory[static_cast<std::size_t> (blockHistoryWrite)] = block;
         blockHistoryWrite = (blockHistoryWrite + 1) % static_cast<int> (block100msHistory.size());
         blockHistoryCount = std::min (blockHistoryCount + 1, static_cast<int> (block100msHistory.size()));
+        ++integrated100msBlocksSinceReset;
 
         current100msSquares.fill (0.0);
         samplesInCurrent100ms = 0;
@@ -194,7 +199,9 @@ private:
 
     void updateIntegrated() noexcept
     {
-        if (blockHistoryCount < 4)
+        // A reset starts a fresh integrated interval; wait for four new 100 ms
+        // blocks before forming the first 400 ms gating block.
+        if (integrated100msBlocksSinceReset < 4 || blockHistoryCount < 4)
             return;
 
         double energy400ms = 0.0;
@@ -209,6 +216,12 @@ private:
 
         if (energyToLufs (energy400ms) > -70.0f)
             integrated400msEnergies.push_back (energy400ms);
+
+        // EBU Mode only requires the live Integrated display to update at 1 Hz.
+        // Keep the 100 ms gating blocks, but avoid re-scanning the full history 10x/sec.
+        if (++integratedUpdateCounter < 10 && integrated400msEnergies.size() > 1)
+            return;
+        integratedUpdateCounter = 0;
 
         if (integrated400msEnergies.empty())
         {
@@ -303,6 +316,8 @@ private:
     std::array<EnergyBlock, 30> block100msHistory {};
     int blockHistoryWrite = 0;
     int blockHistoryCount = 0;
+    int integrated100msBlocksSinceReset = 0;
+    int integratedUpdateCounter = 0;
     std::vector<double> integrated400msEnergies;
 
     float shortTermLufs = -100.0f;
