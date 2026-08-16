@@ -188,6 +188,7 @@ int main()
         loudness.processSample (sample, sample);
     }
 
+    assert (loudness.getMomentaryLufs() > -20.2f && loudness.getMomentaryLufs() < -19.8f);
     assert (loudness.getShortTermLufs() > -20.2f && loudness.getShortTermLufs() < -19.8f);
     assert (loudness.getIntegratedLufs() > -20.2f && loudness.getIntegratedLufs() < -19.8f);
     assert (loudness.getMaxTruePeakDbTP() > -20.2f && loudness.getMaxTruePeakDbTP() < -19.8f);
