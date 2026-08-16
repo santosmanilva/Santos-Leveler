@@ -22,6 +22,7 @@ public:
         float downStrengthPercent = 100.0f;
         float rangeUpDb = 9.0f;
         float upStrengthPercent = 100.0f;
+        float intensityPercent = 100.0f;
         float outputDb = 0.0f;
     };
 
@@ -128,8 +129,8 @@ public:
             const auto upStrength = std::clamp (p.upStrengthPercent, 0.0f, 100.0f) * 0.01f;
             const auto scaledErrorDb = errorDb < 0.0f ? errorDb * downStrength
                                                       : errorDb * upStrength;
-            const auto minCorrectionDb = std::clamp (p.rangeDownDb, -12.0f, 0.0f);
-            const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 12.0f);
+            const auto minCorrectionDb = std::clamp (p.rangeDownDb, -16.0f, 0.0f);
+            const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 16.0f);
 
             // Smart Gate: the knob remains the OPEN threshold. Once active, the
             // detector must fall 3 dB below it before a close is even considered.
@@ -247,21 +248,23 @@ public:
         if (! holdActive)
             heldCorrectionDb = latestRequestedCorrectionDb;
 
-        targetRiderGain = dbToGain (effectiveCorrectionDb);
+        const auto intensity = std::clamp (p.intensityPercent, 0.0f, 100.0f) * 0.01f;
+        const auto intensityScaledCorrectionDb = effectiveCorrectionDb * intensity;
+        targetRiderGain = dbToGain (intensityScaledCorrectionDb);
 
         const auto currentRiderDb = gainToDb (currentRiderGain);
         constexpr float smoothingEpsilonDb = 0.05f;
 
         const auto currentNearZero = std::abs (currentRiderDb) < smoothingEpsilonDb;
-        const auto targetNearZero = std::abs (effectiveCorrectionDb) < smoothingEpsilonDb;
+        const auto targetNearZero = std::abs (intensityScaledCorrectionDb) < smoothingEpsilonDb;
 
         const bool smoothingSameDirection =
             currentNearZero || targetNearZero
-            || ((currentRiderDb > 0.0f) == (effectiveCorrectionDb > 0.0f));
+            || ((currentRiderDb > 0.0f) == (intensityScaledCorrectionDb > 0.0f));
 
         const bool movingTowardUnity =
             smoothingSameDirection
-            && std::abs (effectiveCorrectionDb) < std::abs (currentRiderDb) - smoothingEpsilonDb;
+            && std::abs (intensityScaledCorrectionDb) < std::abs (currentRiderDb) - smoothingEpsilonDb;
 
         const auto safeSpeedMs = std::clamp (p.speedMs, 2.0f, 250.0f);
         const auto safeReleaseMs = std::clamp (p.releaseMs, 50.0f, 3000.0f);
@@ -276,7 +279,7 @@ public:
         const auto predictedPeakDb = peakEnvelopeDb + gainToDb (currentRiderGain);
 
         if (predictedPeakDb > peakThresholdDb)
-            peakReductionDb = std::clamp (peakThresholdDb - predictedPeakDb, -9.0f, 0.0f);
+            peakReductionDb = std::clamp (peakThresholdDb - predictedPeakDb, -9.0f, 0.0f) * intensity;
         else
             peakReductionDb = 0.0f;
 
