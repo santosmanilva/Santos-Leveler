@@ -44,6 +44,25 @@ int main()
     assert (outDb > -21.0f && outDb < -19.0f);
 
     engine.reset();
+    p.upStrengthPercent = 50.0f;
+    runConstantSignal (engine, p, inMinus32, static_cast<int> (sr * 0.5), y);
+    const auto halfUpDb = SantosLevelerEngine::gainToDb (std::abs (y));
+    // 50% strength applies roughly half of the +12 dB requested correction.
+    assert (halfUpDb > -26.5f && halfUpDb < -25.5f);
+
+    engine.reset();
+    p.upStrengthPercent = 100.0f;
+    p.downStrengthPercent = 50.0f;
+    p.peakThresholdDb = -1.0f;
+    const float inMinus8 = SantosLevelerEngine::dbToGain (-8.0f);
+    runConstantSignal (engine, p, inMinus8, static_cast<int> (sr * 0.5), y);
+    const auto halfDownDb = SantosLevelerEngine::gainToDb (std::abs (y));
+    // 50% strength applies roughly half of the -12 dB requested correction.
+    assert (halfDownDb > -14.5f && halfDownDb < -13.5f);
+
+    engine.reset();
+    p.downStrengthPercent = 100.0f;
+    p.peakThresholdDb = -9.0f;
     p.rangeUpDb = 0.0f;
     runConstantSignal (engine, p, inMinus32, static_cast<int> (sr * 0.5), y);
     const auto noBoostDb = SantosLevelerEngine::gainToDb (std::abs (y));
