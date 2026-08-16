@@ -8,6 +8,7 @@
 #include "LevelerEngine.h"
 #include "LoudnessMeter.h"
 #include "TruePeakLimiter.h"
+#include "VoiceCompressor.h"
 
 class SantosLevelerAudioProcessor final : public juce::AudioProcessor
 {
@@ -51,6 +52,7 @@ public:
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
     float getTruePeakReductionDb() const noexcept { return truePeakLimiter.getGainReductionDb(); }
     float getDetectedTruePeakDbTP() const noexcept { return truePeakLimiter.getDetectedTruePeakDbTP(); }
+    float getCompressorReductionDb() const noexcept { return compressorReductionDb.load (std::memory_order_relaxed); }
     float getShortTermLufs() const noexcept { return shortTermLufs.load (std::memory_order_relaxed); }
     float getIntegratedLufs() const noexcept { return integratedLufs.load (std::memory_order_relaxed); }
     float getOutputTruePeakDbTP() const noexcept { return outputTruePeakDbTP.load (std::memory_order_relaxed); }
@@ -61,12 +63,13 @@ public:
     bool isABStateB() const noexcept { return abStateBSelected.load (std::memory_order_relaxed); }
 
 private:
-    using ABState = std::array<float, 14>;
+    using ABState = std::array<float, 21>;
 
     ABState captureCurrentABState() const;
     void applyABState (const ABState& state);
 
     SantosLevelerEngine engine;
+    SantosVoiceCompressor voiceCompressor;
     SantosTruePeakLimiter truePeakLimiter;
     SantosLoudnessMeter loudnessMeter;
     SantosHistoryBuffer history;
@@ -96,6 +99,7 @@ private:
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
     std::atomic<float> riderMeterDb { 0.0f };
+    std::atomic<float> compressorReductionDb { 0.0f };
     std::atomic<float> shortTermLufs { -100.0f };
     std::atomic<float> integratedLufs { -100.0f };
     std::atomic<float> outputTruePeakDbTP { -100.0f };
