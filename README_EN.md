@@ -2,6 +2,14 @@
 
 **Voice Auto Level Rider · VST3 · Windows x64 · Freeware**
 
+[![Build Windows VST3](https://github.com/santosmanilva/SANTOS-LEVELER/actions/workflows/build-windows-vst3.yml/badge.svg)](https://github.com/santosmanilva/SANTOS-LEVELER/actions/workflows/build-windows-vst3.yml)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20x64-informational)
+![Format](https://img.shields.io/badge/format-VST3-orange)
+![JUCE](https://img.shields.io/badge/JUCE-8.0.12-4c8bf5)
+![C++](https://img.shields.io/badge/C%2B%2B-17-00599C)
+![License](https://img.shields.io/badge/license-Freeware-brightgreen)
+
 [Documentación en español](README.md)
 
 ![Santos Leveler v1.0.0](docs/santos-leveler-v1.0.0.webp)
