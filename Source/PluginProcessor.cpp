@@ -17,11 +17,18 @@ constexpr auto paramOutput        = "output";
 constexpr auto paramDownStrength  = "downStrength";
 constexpr auto paramUpStrength    = "upStrength";
 constexpr auto paramIntensity     = "intensity";
+constexpr auto paramCompEnabled   = "compEnabled";
+constexpr auto paramCompThreshold = "compThreshold";
+constexpr auto paramCompRatio     = "compRatio";
+constexpr auto paramCompAttack    = "compAttack";
+constexpr auto paramCompRelease   = "compRelease";
+constexpr auto paramCompMakeup    = "compMakeup";
+constexpr auto paramCeiling       = "ceiling";
 constexpr auto paramBypass        = "bypass";
 
-// Keep the original 13 A/B indices intact for backward-compatible project recall.
-// New parameters are appended rather than inserted into the stored bank layout.
-constexpr std::array<const char*, 14> abParameterIds {
+// Keep all existing A/B indices intact for backward-compatible project recall.
+// Dynamics parameters are appended rather than inserted into the stored bank layout.
+constexpr std::array<const char*, 21> abParameterIds {
     paramTarget,
     paramGate,
     paramSpeed,
@@ -35,7 +42,14 @@ constexpr std::array<const char*, 14> abParameterIds {
     paramOutput,
     paramDownStrength,
     paramUpStrength,
-    paramIntensity
+    paramIntensity,
+    paramCompEnabled,
+    paramCompThreshold,
+    paramCompRatio,
+    paramCompAttack,
+    paramCompRelease,
+    paramCompMakeup,
+    paramCeiling
 };
 
 juce::Identifier abPropertyName (const char* prefix, std::size_t index)
@@ -68,58 +82,65 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
     layout.add (std::make_unique<APF> (juce::ParameterID { paramTarget, 1 }, "Target",
                                        juce::NormalisableRange<float> (-36.0f, -6.0f, 0.5f), -19.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramGate, 1 }, "Gate",
                                        juce::NormalisableRange<float> (-70.0f, -25.0f, 0.5f), -45.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramSpeed, 1 }, "Speed",
                                        skewedRange (2.0f, 250.0f, 20.0f, 1.0f), 15.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramDetect, 1 }, "Detect",
                                        skewedRange (1.0f, 100.0f, 10.0f, 1.0f), 8.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramLookahead, 1 }, "Lookahead",
                                        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 30.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramHold, 1 }, "Hold",
                                        juce::NormalisableRange<float> (0.0f, 1000.0f, 10.0f), 50.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRelease, 1 }, "Release",
                                        skewedRange (50.0f, 3000.0f, 500.0f, 10.0f), 500.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramPeakThreshold, 1 }, "Peak Threshold",
                                        juce::NormalisableRange<float> (-18.0f, -1.0f, 0.5f), -9.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dBFS")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeDown, 1 }, "Range Down",
                                        juce::NormalisableRange<float> (-16.0f, 0.0f, 0.5f), -12.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeUp, 1 }, "Range Up",
                                        juce::NormalisableRange<float> (0.0f, 16.0f, 0.5f), 9.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramOutput, 1 }, "Output",
                                        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.5f), 0.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramDownStrength, 1 }, "Down Strength",
                                        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramUpStrength, 1 }, "Up Strength",
                                        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
-
     layout.add (std::make_unique<APF> (juce::ParameterID { paramIntensity, 1 }, "Intensity",
                                        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
+
+    layout.add (std::make_unique<APB> (juce::ParameterID { paramCompEnabled, 1 }, "Compressor", false));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramCompThreshold, 1 }, "Comp Threshold",
+                                       juce::NormalisableRange<float> (-36.0f, 0.0f, 0.5f), -18.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("dB")));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramCompRatio, 1 }, "Comp Ratio",
+                                       juce::NormalisableRange<float> (1.0f, 10.0f, 0.1f), 3.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel (":1")));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramCompAttack, 1 }, "Comp Attack",
+                                       skewedRange (0.5f, 100.0f, 10.0f, 0.5f), 10.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("ms")));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramCompRelease, 1 }, "Comp Release",
+                                       skewedRange (20.0f, 1000.0f, 120.0f, 5.0f), 120.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("ms")));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramCompMakeup, 1 }, "Comp Makeup",
+                                       juce::NormalisableRange<float> (0.0f, 12.0f, 0.5f), 0.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("dB")));
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramCeiling, 1 }, "Ceiling",
+                                       juce::NormalisableRange<float> (-9.0f, -1.0f, 0.5f), -1.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("dBTP")));
 
     layout.add (std::make_unique<APB> (juce::ParameterID { paramBypass, 1 }, "Bypass", false));
 
@@ -129,11 +150,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
 SantosLevelerAudioProcessor::ABState SantosLevelerAudioProcessor::captureCurrentABState() const
 {
     ABState state {};
-
     for (std::size_t i = 0; i < abParameterIds.size(); ++i)
         if (auto* value = apvts.getRawParameterValue (abParameterIds[i]))
             state[i] = value->load();
-
     return state;
 }
 
@@ -153,10 +172,8 @@ void SantosLevelerAudioProcessor::applyABState (const ABState& state)
 void SantosLevelerAudioProcessor::ensureABStatesInitialised()
 {
     const juce::ScopedLock lock (abStateLock);
-
     if (abStatesInitialised)
         return;
-
     const auto current = captureCurrentABState();
     abStateA = current;
     abStateB = current;
@@ -167,10 +184,8 @@ void SantosLevelerAudioProcessor::ensureABStatesInitialised()
 void SantosLevelerAudioProcessor::selectABState (bool useB)
 {
     ABState stateToApply {};
-
     {
         const juce::ScopedLock lock (abStateLock);
-
         if (! abStatesInitialised)
         {
             const auto current = captureCurrentABState();
@@ -181,26 +196,24 @@ void SantosLevelerAudioProcessor::selectABState (bool useB)
         }
 
         const auto currentlyUsingB = abStateBSelected.load (std::memory_order_relaxed);
-
         if (currentlyUsingB == useB)
             return;
-
         if (currentlyUsingB)
             abStateB = captureCurrentABState();
         else
             abStateA = captureCurrentABState();
-
         abStateBSelected.store (useB, std::memory_order_relaxed);
         stateToApply = useB ? abStateB : abStateA;
     }
-
     applyABState (stateToApply);
 }
 
 void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
 {
     engine.prepare(sampleRate, getTotalNumInputChannels());
+    voiceCompressor.prepare(sampleRate);
     truePeakLimiter.prepare(sampleRate, getTotalNumInputChannels());
+    truePeakLimiter.setCeilingDbTP(apvts.getRawParameterValue(paramCeiling)->load());
     loudnessMeter.prepare(sampleRate, getTotalNumInputChannels());
     currentSampleRate = sampleRate;
 
@@ -227,6 +240,7 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     history.clear();
     historyCounter = 0;
     historyPeriodSamples = std::max(1, static_cast<int> (std::round(sampleRate / 60.0)));
+    compressorReductionDb.store(0.0f, std::memory_order_relaxed);
     shortTermLufs.store(-100.0f, std::memory_order_relaxed);
     integratedLufs.store(-100.0f, std::memory_order_relaxed);
     outputTruePeakDbTP.store(-100.0f, std::memory_order_relaxed);
@@ -272,6 +286,15 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     p.intensityPercent = apvts.getRawParameterValue(paramIntensity)->load();
     p.outputDb = apvts.getRawParameterValue(paramOutput)->load();
 
+    SantosVoiceCompressor::Parameters cp;
+    cp.enabled = apvts.getRawParameterValue(paramCompEnabled)->load() >= 0.5f;
+    cp.thresholdDb = apvts.getRawParameterValue(paramCompThreshold)->load();
+    cp.ratio = apvts.getRawParameterValue(paramCompRatio)->load();
+    cp.attackMs = apvts.getRawParameterValue(paramCompAttack)->load();
+    cp.releaseMs = apvts.getRawParameterValue(paramCompRelease)->load();
+    cp.makeupDb = apvts.getRawParameterValue(paramCompMakeup)->load();
+
+    truePeakLimiter.setCeilingDbTP(apvts.getRawParameterValue(paramCeiling)->load());
     const auto bypassTarget = apvts.getRawParameterValue(paramBypass)->load() >= 0.5f ? 1.0f : 0.0f;
 
     const auto requestedLookaheadSamples = std::clamp(static_cast<int> (std::round(currentSampleRate * static_cast<double> (p.lookaheadMs) * 0.001)), 0, maxLookaheadSamples);
@@ -329,10 +352,8 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             const float targetL = delayLeft[targetReadPosition];
             const float targetR = delayRight != nullptr ? delayRight[targetReadPosition] : targetL;
             const auto progress = 1.0f - static_cast<float> (lookaheadTransitionSamplesRemaining) / static_cast<float> (lookaheadTransitionLengthSamples);
-
             delayedL = delayedL + (targetL - delayedL) * progress;
             delayedR = delayedR + (targetR - delayedR) * progress;
-
             const auto currentHistoryDb = historyInputDbBuffer[static_cast<std::size_t> (currentReadPosition)];
             const auto targetHistoryDb = historyInputDbBuffer[static_cast<std::size_t> (targetReadPosition)];
             historyAlignedInputDb = currentHistoryDb + (targetHistoryDb - currentHistoryDb) * progress;
@@ -347,6 +368,8 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
         telemetry = engine.processSampleLookahead(detectorL, detectorR, delayedL, delayedR, p);
         historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
+
+        voiceCompressor.process(delayedL, delayedR, cp);
 
         float limitedWetL = 0.0f;
         float limitedWetR = 0.0f;
@@ -391,10 +414,7 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 snapshot.fastDb = telemetrySnapshot.fastDb;
                 snapshot.slowDb = telemetrySnapshot.slowDb;
                 snapshot.controlDb = telemetrySnapshot.controlDb;
-                snapshot.rawRiderDb = std::clamp(
-                    p.targetDb - telemetrySnapshot.controlDb,
-                    minCorrectionDb,
-                    maxCorrectionDb);
+                snapshot.rawRiderDb = std::clamp(p.targetDb - telemetrySnapshot.controlDb, minCorrectionDb, maxCorrectionDb);
                 snapshot.requestedRiderDb = telemetrySnapshot.requestedRiderDb;
                 snapshot.effectiveRiderDb = telemetrySnapshot.effectiveRiderDb;
                 snapshot.riderDb = telemetrySnapshot.riderDb;
@@ -411,6 +431,7 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     inputMeterDb.store(telemetry.inputDb, std::memory_order_relaxed);
     outputMeterDb.store(telemetry.outputDb, std::memory_order_relaxed);
     riderMeterDb.store(telemetry.riderDb, std::memory_order_relaxed);
+    compressorReductionDb.store(voiceCompressor.getGainReductionDb(), std::memory_order_relaxed);
     riderActive.store(telemetry.riderActive, std::memory_order_relaxed);
     shortTermLufs.store(loudnessMeter.getShortTermLufs(), std::memory_order_relaxed);
     integratedLufs.store(loudnessMeter.getIntegratedLufs(), std::memory_order_relaxed);
@@ -425,7 +446,6 @@ void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destDa
 
     {
         const juce::ScopedLock lock (abStateLock);
-
         if (! abStatesInitialised)
         {
             const auto current = captureCurrentABState();
@@ -434,12 +454,10 @@ void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destDa
             abStateBSelected.store (false, std::memory_order_relaxed);
             abStatesInitialised = true;
         }
-
         if (abStateBSelected.load (std::memory_order_relaxed))
             abStateB = captureCurrentABState();
         else
             abStateA = captureCurrentABState();
-
         stateA = abStateA;
         stateB = abStateB;
         selectedB = abStateBSelected.load (std::memory_order_relaxed);
@@ -449,13 +467,11 @@ void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destDa
     {
         state.setProperty ("abInitialised", true, nullptr);
         state.setProperty ("abSelectedB", selectedB, nullptr);
-
         for (std::size_t i = 0; i < abParameterIds.size(); ++i)
         {
             state.setProperty (abPropertyName ("abA", i), stateA[i], nullptr);
             state.setProperty (abPropertyName ("abB", i), stateB[i], nullptr);
         }
-
         juce::MemoryOutputStream stream (destData, false);
         state.writeToStream (stream);
     }
@@ -470,7 +486,6 @@ void SantosLevelerAudioProcessor::setStateInformation (const void* data, int siz
 
         const juce::ScopedLock lock (abStateLock);
         const auto hasStoredAB = static_cast<bool> (state.getProperty ("abInitialised", false));
-
         if (hasStoredAB)
         {
             for (std::size_t i = 0; i < abParameterIds.size(); ++i)
@@ -478,9 +493,7 @@ void SantosLevelerAudioProcessor::setStateInformation (const void* data, int siz
                 abStateA[i] = static_cast<float> (state.getProperty (abPropertyName ("abA", i), current[i]));
                 abStateB[i] = static_cast<float> (state.getProperty (abPropertyName ("abB", i), current[i]));
             }
-
-            abStateBSelected.store (static_cast<bool> (state.getProperty ("abSelectedB", false)),
-                                    std::memory_order_relaxed);
+            abStateBSelected.store (static_cast<bool> (state.getProperty ("abSelectedB", false)), std::memory_order_relaxed);
         }
         else
         {
@@ -488,7 +501,6 @@ void SantosLevelerAudioProcessor::setStateInformation (const void* data, int siz
             abStateB = current;
             abStateBSelected.store (false, std::memory_order_relaxed);
         }
-
         abStatesInitialised = true;
     }
 }
