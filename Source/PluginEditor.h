@@ -76,6 +76,83 @@ private:
         SantosLevelerAudioProcessor& processor;
     };
 
+    class AboutButton final : public juce::Button,
+                              private juce::ComponentListener
+    {
+    public:
+        AboutButton() : juce::Button ("About Santos Leveler")
+        {
+            setMouseCursor (juce::MouseCursor::PointingHandCursor);
+            setTooltip ("About Santos Leveler");
+        }
+
+        ~AboutButton() override
+        {
+            if (observedParent != nullptr)
+                observedParent->removeComponentListener (this);
+        }
+
+        void paintButton (juce::Graphics&, bool, bool) override {}
+
+        void clicked() override
+        {
+            const juce::String message =
+                "Version 1.0.0\n\n"
+                "Voice Auto Level Rider\n"
+                "VST3 Audio Plugin - Windows x64\n\n"
+                "Designed & Developed by\n"
+                "José Antonio Santos Santos\n\n"
+                "Developed with assistance from ChatGPT by OpenAI\n\n"
+                "FREEWARE\n"
+                "Free of charge for personal and professional use\n\n"
+                "GitHub\n"
+                "github.com/santosmanilva/SANTOS-LEVELER\n\n"
+                "Contact\n"
+                "santos.manilva@gmail.com\n\n"
+                "Built with JUCE\n"
+                "True Peak - LUFS M/S/I - Voice Auto Level Rider\n\n"
+                "© 2026 José Antonio Santos Santos\n"
+                "All rights reserved.";
+
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
+                                                    "Santos Leveler",
+                                                    message,
+                                                    "CLOSE",
+                                                    observedParent);
+        }
+
+        void parentHierarchyChanged() override
+        {
+            if (observedParent != nullptr)
+                observedParent->removeComponentListener (this);
+            observedParent = getParentComponent();
+            if (observedParent != nullptr)
+            {
+                observedParent->addComponentListener (this);
+                updateBounds();
+            }
+        }
+
+    private:
+        void componentMovedOrResized (juce::Component&, bool, bool wasResized) override
+        {
+            if (wasResized)
+                updateBounds();
+        }
+
+        void updateBounds()
+        {
+            if (observedParent == nullptr)
+                return;
+            const auto sx = static_cast<float> (observedParent->getWidth()) / 2100.0f;
+            const auto sy = static_cast<float> (observedParent->getHeight()) / 1024.0f;
+            setBounds (juce::roundToInt (30.0f * sx), juce::roundToInt (14.0f * sy),
+                       juce::roundToInt (365.0f * sx), juce::roundToInt (70.0f * sy));
+        }
+
+        juce::Component* observedParent = nullptr;
+    };
+
     class FactoryPresetButton final : public juce::TextButton,
                                       private juce::ComponentListener
     {
@@ -312,8 +389,11 @@ private:
     void updateABButtons();
     void ensurePresetButtonVisible()
     {
+        if (aboutButton.getParentComponent() != this)
+            addAndMakeVisible (aboutButton);
         if (presetButton.getParentComponent() != this)
             addAndMakeVisible (presetButton);
+        aboutButton.toFront (false);
     }
 
     SantosLevelerAudioProcessor& processor;
@@ -330,6 +410,7 @@ private:
     juce::Label compThresholdLabel, compRatioLabel, compAttackLabel, compReleaseLabel, compMakeupLabel, ceilingLabel;
     juce::Label titleLabel, subtitleLabel;
 
+    AboutButton aboutButton;
     FactoryPresetButton presetButton { processor };
     juce::TextButton resetLoudnessButton;
     juce::TextButton aButton;
