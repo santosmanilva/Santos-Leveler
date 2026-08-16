@@ -49,6 +49,8 @@ target_sources(SantosLeveler PRIVATE
     Source/PluginEditor.cpp
     Source/PluginEditor.h
     Source/LevelerEngine.h
+    Source/TruePeakLimiter.h
+    Source/LoudnessMeter.h
     Source/HistoryBuffer.h
 )
 
