@@ -52,6 +52,7 @@ public:
         integrated400msEnergies.clear();
         integrated100msBlocksSinceReset = 0;
         integratedUpdateCounter = 0;
+        momentaryLufs = -100.0f;
         shortTermLufs = -100.0f;
         integratedLufs = -100.0f;
         resetTruePeak();
@@ -83,6 +84,7 @@ public:
             finish100msBlock();
     }
 
+    float getMomentaryLufs() const noexcept { return momentaryLufs; }
     float getShortTermLufs() const noexcept { return shortTermLufs; }
     float getIntegratedLufs() const noexcept { return integratedLufs; }
     float getMaxTruePeakDbTP() const noexcept { return maxTruePeakDbTP; }
@@ -172,18 +174,16 @@ private:
         current100msSquares.fill (0.0);
         samplesInCurrent100ms = 0;
 
+        updateMomentary();
         updateShortTerm();
         updateIntegrated();
     }
 
-    void updateShortTerm() noexcept
+    float recentLoudness (int requestedBlocks) const noexcept
     {
-        const auto count = std::min (blockHistoryCount, 30);
+        const auto count = std::min (blockHistoryCount, requestedBlocks);
         if (count <= 0)
-        {
-            shortTermLufs = -100.0f;
-            return;
-        }
+            return -100.0f;
 
         double energy = 0.0;
         for (int i = 0; i < count; ++i)
@@ -194,7 +194,17 @@ private:
             energy += summedEnergy (block100msHistory[static_cast<std::size_t> (index)]);
         }
 
-        shortTermLufs = energyToLufs (energy / static_cast<double> (count));
+        return energyToLufs (energy / static_cast<double> (count));
+    }
+
+    void updateMomentary() noexcept
+    {
+        momentaryLufs = recentLoudness (4);
+    }
+
+    void updateShortTerm() noexcept
+    {
+        shortTermLufs = recentLoudness (30);
     }
 
     void updateIntegrated() noexcept
@@ -300,9 +310,9 @@ private:
         {{  0.1373291015625f,  0.4650878906250f,  0.7797851562500f,  0.9721679687500f }},
         {{  0.9721679687500f,  0.7797851562500f,  0.4650878906250f,  0.1373291015625f }},
         {{ -0.1022949218750f, -0.2003173828125f, -0.1665039062500f, -0.0594482421875f }},
-        {{  0.0476074218750f,  0.1015625000000f,  0.0891113281250f,  0.0332031250000f }},
+        {{  0.0476074218750f,  0.1015625000000f,  0.0891113281250f,  0.0332031250f }},
         {{ -0.0266113281250f, -0.0582275390625f, -0.0517578125000f, -0.0196533203125f }},
-        {{  0.0148925781250f,  0.0330810546875f,  0.0292968750000f,  0.0109863281250f }},
+        {{  0.0148925781250f,  0.0330810546875f,  0.0292968750f,  0.0109863281250f }},
         {{ -0.0083007812500f, -0.0189208984375f, -0.0291748046875f,  0.0017089843750f }}
     }};
 
@@ -320,6 +330,7 @@ private:
     int integratedUpdateCounter = 0;
     std::vector<double> integrated400msEnergies;
 
+    float momentaryLufs = -100.0f;
     float shortTermLufs = -100.0f;
     float integratedLufs = -100.0f;
 
