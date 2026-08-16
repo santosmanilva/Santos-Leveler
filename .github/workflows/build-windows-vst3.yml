@@ -36,6 +36,7 @@ jobs:
           $plugin = Get-ChildItem -Path $env:BUILD_DIR -Recurse -Directory -Filter "*.vst3" | Select-Object -First 1
           if ($null -eq $plugin) { throw "No .vst3 bundle found" }
           Copy-Item -Path $plugin.FullName -Destination package -Recurse
+          Copy-Item -Path LICENSE -Destination package
 
       - name: Upload VST3 artifact
         uses: actions/upload-artifact@v6
