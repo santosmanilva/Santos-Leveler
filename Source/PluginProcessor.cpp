@@ -44,6 +44,13 @@ juce::NormalisableRange<float> skewedRange (float start, float end, float centre
     r.setSkewForCentre (centre);
     return r;
 }
+
+float peakToDb (float peak) noexcept
+{
+    if (peak <= 1.0e-8f)
+        return -100.0f;
+    return std::max (-100.0f, 20.0f * std::log10 (peak));
+}
 }
 
 SantosLevelerAudioProcessor::SantosLevelerAudioProcessor()
@@ -203,13 +210,12 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     bypassMix = bypassed ? 1.0f : 0.0f;
     const auto bypassSmoothingSeconds = 0.010;
     bypassSmoothingAlpha = static_cast<float> (1.0 - std::exp(-1.0 / (bypassSmoothingSeconds * std::max(1.0, sampleRate))));
-    const auto finalMeterSeconds = 0.100;
-    finalOutputMeterAlpha = static_cast<float> (1.0 - std::exp(-1.0 / (finalMeterSeconds * std::max(1.0, sampleRate))));
-    finalOutputMeanSquare = 0.0f;
 
     history.clear();
     historyCounter = 0;
     historyPeriodSamples = std::max(1, static_cast<int> (std::round(sampleRate / 60.0)));
+    inputMeterDb.store(-100.0f, std::memory_order_relaxed);
+    outputMeterDb.store(-100.0f, std::memory_order_relaxed);
     compressorReductionDb.store(0.0f, std::memory_order_relaxed);
     finalOutputMeterDb.store(-100.0f, std::memory_order_relaxed);
     shortTermLufs.store(-100.0f, std::memory_order_relaxed);
@@ -289,6 +295,9 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     SantosLevelerEngine::Telemetry telemetry;
     float historyAlignedInputDb = -100.0f;
+    float inputPeak = 0.0f;
+    float levelerOutputPeak = 0.0f;
+    float finalOutputPeak = 0.0f;
 
     auto wrapReadPosition = [this] (int position)
     {
@@ -301,6 +310,8 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     {
         const float detectorL = left[i];
         const float detectorR = right != nullptr ? right[i] : detectorL;
+        inputPeak = std::max (inputPeak, std::max (std::abs (detectorL), std::abs (detectorR)));
+
         delayLeft[lookaheadWritePosition] = detectorL;
         if (delayRight != nullptr) delayRight[lookaheadWritePosition] = detectorR;
 
@@ -326,6 +337,7 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         const float dryR = delayedR;
         telemetry = engine.processSampleLookahead(detectorL, detectorR, delayedL, delayedR, p);
         historyInputDbBuffer[static_cast<std::size_t> (lookaheadWritePosition)] = telemetry.inputDb;
+        levelerOutputPeak = std::max (levelerOutputPeak, std::max (std::abs (delayedL), std::abs (delayedR)));
 
         voiceCompressor.process(delayedL, delayedR, cp);
 
@@ -338,11 +350,7 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         left[i] = limitedWetL * wetMix + limiterDryL * bypassMix;
         const auto finalR = right != nullptr ? limitedWetR * wetMix + limiterDryR * bypassMix : left[i];
         if (right != nullptr) right[i] = finalR;
-
-        const auto square = numInputChannels > 1
-            ? 0.5f * (left[i] * left[i] + finalR * finalR)
-            : left[i] * left[i];
-        finalOutputMeanSquare += finalOutputMeterAlpha * (square - finalOutputMeanSquare);
+        finalOutputPeak = std::max (finalOutputPeak, std::max (std::abs (left[i]), std::abs (finalR)));
 
         if (!transportKnown || playing) loudnessMeter.processSample(left[i], finalR);
 
@@ -380,11 +388,9 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    inputMeterDb.store(telemetry.inputDb, std::memory_order_relaxed);
-    outputMeterDb.store(telemetry.outputDb, std::memory_order_relaxed);
-    const auto finalRms = std::sqrt(std::max(0.0f, finalOutputMeanSquare));
-    const auto finalDb = finalRms <= 1.0e-8f ? -100.0f : std::max(-100.0f, 20.0f * std::log10(finalRms));
-    finalOutputMeterDb.store(finalDb, std::memory_order_relaxed);
+    inputMeterDb.store(peakToDb(inputPeak), std::memory_order_relaxed);
+    outputMeterDb.store(peakToDb(levelerOutputPeak), std::memory_order_relaxed);
+    finalOutputMeterDb.store(peakToDb(finalOutputPeak), std::memory_order_relaxed);
     riderMeterDb.store(telemetry.riderDb, std::memory_order_relaxed);
     compressorReductionDb.store(voiceCompressor.getGainReductionDb(), std::memory_order_relaxed);
     riderActive.store(telemetry.riderActive, std::memory_order_relaxed);
