@@ -1,4 +1,5 @@
 #include "../Source/LevelerEngine.h"
+#include "../Source/LoudnessMeter.h"
 #include "../Source/TruePeakLimiter.h"
 
 #include <cassert>
@@ -108,6 +109,24 @@ int main()
     assert (std::abs (delayedDryL - dryReference) < 1.0e-6f);
     assert (std::abs (delayedDryR - dryReference) < 1.0e-6f);
     assert (limiter.getGainReductionDb() < -2.0f);
+
+    SantosLoudnessMeter loudness;
+    loudness.prepare (sr, 2);
+    constexpr float pi = 3.14159265358979323846f;
+    for (int i = 0; i < static_cast<int> (sr * 4.0); ++i)
+    {
+        const auto sample = 0.1f * std::sin (2.0f * pi * 1000.0f * static_cast<float> (i) / static_cast<float> (sr));
+        loudness.processSample (sample, sample);
+    }
+
+    // Stereo 1 kHz sine at -20 dBFS peak is approximately -20 LUFS with BS.1770 K-weighting.
+    assert (loudness.getShortTermLufs() > -20.2f && loudness.getShortTermLufs() < -19.8f);
+    assert (loudness.getIntegratedLufs() > -20.2f && loudness.getIntegratedLufs() < -19.8f);
+    assert (loudness.getMaxTruePeakDbTP() > -20.2f && loudness.getMaxTruePeakDbTP() < -19.8f);
+
+    loudness.resetIntegratedAndTruePeak();
+    assert (loudness.getIntegratedLufs() <= -99.0f);
+    assert (loudness.getMaxTruePeakDbTP() <= -99.0f);
 
     std::cout << "SANTOS LEVELER DSP tests passed.\n";
     return 0;
