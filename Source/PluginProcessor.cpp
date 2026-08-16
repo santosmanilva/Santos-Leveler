@@ -195,6 +195,7 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
 {
     engine.prepare(sampleRate, getTotalNumInputChannels());
     truePeakLimiter.prepare(sampleRate, getTotalNumInputChannels());
+    loudnessMeter.prepare(sampleRate, getTotalNumInputChannels());
     currentSampleRate = sampleRate;
 
     maxLookaheadSamples = std::max(0, static_cast<int> (std::ceil(sampleRate * 0.100)));
@@ -220,6 +221,9 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     history.clear();
     historyCounter = 0;
     historyPeriodSamples = std::max(1, static_cast<int> (std::round(sampleRate / 60.0)));
+    shortTermLufs.store(-100.0f, std::memory_order_relaxed);
+    integratedLufs.store(-100.0f, std::memory_order_relaxed);
+    outputTruePeakDbTP.store(-100.0f, std::memory_order_relaxed);
 }
 
 void SantosLevelerAudioProcessor::releaseResources() {}
@@ -235,6 +239,9 @@ bool SantosLevelerAudioProcessor::isBusesLayoutSupported (const BusesLayout& lay
 void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    if (loudnessResetRequested.exchange(false, std::memory_order_acq_rel))
+        loudnessMeter.resetIntegratedAndTruePeak();
 
     const auto numInputChannels = getTotalNumInputChannels();
     const auto numOutputChannels = getTotalNumOutputChannels();
@@ -350,6 +357,9 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         if (right != nullptr)
             right[i] = limitedWetR * wetMix + limiterDryR * bypassMix;
 
+        if (!transportKnown || playing)
+            loudnessMeter.processSample(left[i], right != nullptr ? right[i] : left[i]);
+
         if (lookaheadTransitionSamplesRemaining > 0)
         {
             --lookaheadTransitionSamplesRemaining;
@@ -395,6 +405,9 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     outputMeterDb.store(telemetry.outputDb, std::memory_order_relaxed);
     riderMeterDb.store(telemetry.riderDb, std::memory_order_relaxed);
     riderActive.store(telemetry.riderActive, std::memory_order_relaxed);
+    shortTermLufs.store(loudnessMeter.getShortTermLufs(), std::memory_order_relaxed);
+    integratedLufs.store(loudnessMeter.getIntegratedLufs(), std::memory_order_relaxed);
+    outputTruePeakDbTP.store(loudnessMeter.getMaxTruePeakDbTP(), std::memory_order_relaxed);
 }
 
 void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
