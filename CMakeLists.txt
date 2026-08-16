@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SantosLeveler VERSION 0.1.0 LANGUAGES CXX C)
+project("Santos Leveler" VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,7 +38,7 @@ juce_add_plugin(SantosLeveler
     PLUGIN_CODE SLv1
     FORMATS VST3
     VST3_CATEGORIES Fx Dynamics
-    PRODUCT_NAME "SANTOS LEVELER"
+    PRODUCT_NAME "Santos Leveler"
 )
 
 juce_generate_juce_header(SantosLeveler)
