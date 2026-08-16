@@ -218,6 +218,7 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     outputMeterDb.store(-100.0f, std::memory_order_relaxed);
     compressorReductionDb.store(0.0f, std::memory_order_relaxed);
     finalOutputMeterDb.store(-100.0f, std::memory_order_relaxed);
+    momentaryLufs.store(-100.0f, std::memory_order_relaxed);
     shortTermLufs.store(-100.0f, std::memory_order_relaxed);
     integratedLufs.store(-100.0f, std::memory_order_relaxed);
     outputTruePeakDbTP.store(-100.0f, std::memory_order_relaxed);
@@ -394,6 +395,7 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     riderMeterDb.store(telemetry.riderDb, std::memory_order_relaxed);
     compressorReductionDb.store(voiceCompressor.getGainReductionDb(), std::memory_order_relaxed);
     riderActive.store(telemetry.riderActive, std::memory_order_relaxed);
+    momentaryLufs.store(loudnessMeter.getMomentaryLufs(), std::memory_order_relaxed);
     shortTermLufs.store(loudnessMeter.getShortTermLufs(), std::memory_order_relaxed);
     integratedLufs.store(loudnessMeter.getIntegratedLufs(), std::memory_order_relaxed);
     outputTruePeakDbTP.store(loudnessMeter.getMaxTruePeakDbTP(), std::memory_order_relaxed);
