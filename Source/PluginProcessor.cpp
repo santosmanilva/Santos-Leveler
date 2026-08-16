@@ -14,9 +14,13 @@ constexpr auto paramPeakThreshold = "peakThreshold";
 constexpr auto paramRangeDown     = "rangeDown";
 constexpr auto paramRangeUp       = "rangeUp";
 constexpr auto paramOutput        = "output";
+constexpr auto paramDownStrength  = "downStrength";
+constexpr auto paramUpStrength    = "upStrength";
 constexpr auto paramBypass        = "bypass";
 
-constexpr std::array<const char*, 11> abParameterIds {
+// Keep the original 11 A/B indices intact for backward-compatible project recall.
+// New parameters are appended rather than inserted into the stored bank layout.
+constexpr std::array<const char*, 13> abParameterIds {
     paramTarget,
     paramGate,
     paramSpeed,
@@ -27,7 +31,9 @@ constexpr std::array<const char*, 11> abParameterIds {
     paramPeakThreshold,
     paramRangeDown,
     paramRangeUp,
-    paramOutput
+    paramOutput,
+    paramDownStrength,
+    paramUpStrength
 };
 
 juce::Identifier abPropertyName (const char* prefix, std::size_t index)
@@ -100,6 +106,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
     layout.add (std::make_unique<APF> (juce::ParameterID { paramOutput, 1 }, "Output",
                                        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.5f), 0.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramDownStrength, 1 }, "Down Strength",
+                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("%")));
+
+    layout.add (std::make_unique<APF> (juce::ParameterID { paramUpStrength, 1 }, "Up Strength",
+                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("%")));
 
     layout.add (std::make_unique<APB> (juce::ParameterID { paramBypass, 1 }, "Bypass", false));
 
@@ -239,7 +253,9 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     p.releaseMs = apvts.getRawParameterValue(paramRelease)->load();
     p.peakThresholdDb = apvts.getRawParameterValue(paramPeakThreshold)->load();
     p.rangeDownDb = apvts.getRawParameterValue(paramRangeDown)->load();
+    p.downStrengthPercent = apvts.getRawParameterValue(paramDownStrength)->load();
     p.rangeUpDb = apvts.getRawParameterValue(paramRangeUp)->load();
+    p.upStrengthPercent = apvts.getRawParameterValue(paramUpStrength)->load();
     p.outputDb = apvts.getRawParameterValue(paramOutput)->load();
 
     const auto bypassTarget = apvts.getRawParameterValue(paramBypass)->load() >= 0.5f ? 1.0f : 0.0f;
