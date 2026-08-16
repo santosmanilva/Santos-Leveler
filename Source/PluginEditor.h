@@ -80,6 +80,8 @@ private:
                          const juce::String& suffix, int decimals, juce::Colour accent);
     void configureHeaderButton (juce::TextButton& button, const juce::String& text);
     void updateABButtons();
+    void showPresetMenu();
+    void applyFactoryPreset (int presetIndex);
 
     SantosLevelerAudioProcessor& processor;
     SantosLookAndFeel lookAndFeel;
@@ -95,6 +97,7 @@ private:
     juce::Label compThresholdLabel, compRatioLabel, compAttackLabel, compReleaseLabel, compMakeupLabel, ceilingLabel;
     juce::Label titleLabel, subtitleLabel;
 
+    juce::TextButton presetButton;
     juce::TextButton resetLoudnessButton;
     juce::TextButton aButton;
     juce::TextButton bButton;
