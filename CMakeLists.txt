@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project("Santos Leveler" VERSION 0.1.0 LANGUAGES CXX C)
+project("Santos Leveler" VERSION 1.0.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,6 +52,7 @@ target_sources(SantosLeveler PRIVATE
     Source/TruePeakLimiter.h
     Source/LoudnessMeter.h
     Source/HistoryBuffer.h
+    Source/VoiceCompressor.h
 )
 
 target_compile_definitions(SantosLeveler
