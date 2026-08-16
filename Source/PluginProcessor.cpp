@@ -71,10 +71,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::NormalisableRange<float> (-36.0f, -6.0f, 0.5f), -19.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramGate, 1 }, "Gate",
-                                       juce::NormalisableRange<float> (-70.0f, -25.0f, 0.5f), -45.0f,
+                                       juce::NormalisableRange<float> (-70.0f, -25.0f, 0.5f), -40.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramSpeed, 1 }, "Speed",
-                                       skewedRange (2.0f, 250.0f, 20.0f, 1.0f), 15.0f,
+                                       skewedRange (2.0f, 250.0f, 20.0f, 1.0f), 79.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramDetect, 1 }, "Detect",
                                        skewedRange (1.0f, 100.0f, 10.0f, 1.0f), 8.0f,
@@ -83,36 +83,36 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 30.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramHold, 1 }, "Hold",
-                                       juce::NormalisableRange<float> (0.0f, 1000.0f, 10.0f), 50.0f,
+                                       juce::NormalisableRange<float> (0.0f, 1000.0f, 10.0f), 100.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRelease, 1 }, "Release",
-                                       skewedRange (50.0f, 3000.0f, 500.0f, 10.0f), 500.0f,
+                                       skewedRange (50.0f, 3000.0f, 500.0f, 10.0f), 100.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramPeakThreshold, 1 }, "Peak Threshold",
-                                       juce::NormalisableRange<float> (-18.0f, -1.0f, 0.5f), -9.0f,
+                                       juce::NormalisableRange<float> (-18.0f, -1.0f, 0.5f), -8.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dBFS")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeDown, 1 }, "Range Down",
                                        juce::NormalisableRange<float> (-16.0f, 0.0f, 0.5f), -12.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramRangeUp, 1 }, "Range Up",
-                                       juce::NormalisableRange<float> (0.0f, 16.0f, 0.5f), 9.0f,
+                                       juce::NormalisableRange<float> (0.0f, 16.0f, 0.5f), 15.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramOutput, 1 }, "Leveler Out",
                                        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.5f), 0.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramDownStrength, 1 }, "Down Strength",
-                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
+                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 69.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramUpStrength, 1 }, "Up Strength",
-                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
+                                       juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 50.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramIntensity, 1 }, "Intensity",
                                        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("%")));
 
-    layout.add (std::make_unique<APB> (juce::ParameterID { paramCompEnabled, 1 }, "Compressor", false));
+    layout.add (std::make_unique<APB> (juce::ParameterID { paramCompEnabled, 1 }, "Compressor", true));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramCompThreshold, 1 }, "Comp Threshold",
-                                       juce::NormalisableRange<float> (-36.0f, 0.0f, 0.5f), -18.0f,
+                                       juce::NormalisableRange<float> (-36.0f, 0.0f, 0.5f), -20.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramCompRatio, 1 }, "Comp Ratio",
                                        juce::NormalisableRange<float> (1.0f, 10.0f, 0.1f), 3.0f,
@@ -124,7 +124,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SantosLevelerAudioProcessor:
                                        skewedRange (20.0f, 1000.0f, 120.0f, 5.0f), 120.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramCompMakeup, 1 }, "Comp Makeup",
-                                       juce::NormalisableRange<float> (0.0f, 12.0f, 0.5f), 0.0f,
+                                       juce::NormalisableRange<float> (0.0f, 12.0f, 0.5f), 2.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { paramCeiling, 1 }, "Ceiling",
                                        juce::NormalisableRange<float> (-9.0f, -1.0f, 0.5f), -1.0f,
