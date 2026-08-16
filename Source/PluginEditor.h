@@ -51,6 +51,16 @@ private:
         juce::Colour colour;
     };
 
+    class LoudnessMeterComponent final : public juce::Component
+    {
+    public:
+        explicit LoudnessMeterComponent (SantosLevelerAudioProcessor& p) : processor (p) {}
+        void paint (juce::Graphics&) override;
+
+    private:
+        SantosLevelerAudioProcessor& processor;
+    };
+
     void timerCallback() override;
     void configureKnob (juce::Slider&, juce::Label&, const juce::String& name,
                         const juce::String& suffix, int decimals, juce::Colour accent);
@@ -77,6 +87,7 @@ private:
     HistoryComponent history;
     MeterComponent inputMeter;
     MeterComponent outputMeter;
+    LoudnessMeterComponent loudnessMeter;
 
     juce::AudioProcessorValueTreeState::SliderAttachment targetAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment gateAttachment;
