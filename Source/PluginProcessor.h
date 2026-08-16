@@ -46,6 +46,7 @@ public:
     const SantosHistoryBuffer& getHistory() const noexcept { return history; }
     float getInputMeterDb() const noexcept  { return inputMeterDb.load (std::memory_order_relaxed); }
     float getOutputMeterDb() const noexcept { return outputMeterDb.load (std::memory_order_relaxed); }
+    float getFinalOutputMeterDb() const noexcept { return finalOutputMeterDb.load (std::memory_order_relaxed); }
     float getRiderDb() const noexcept { return riderMeterDb.load (std::memory_order_relaxed); }
     bool getRiderActive() const noexcept { return riderActive.load (std::memory_order_relaxed); }
     bool getTransportPlaying() const noexcept { return transportPlaying.load (std::memory_order_relaxed); }
@@ -89,6 +90,8 @@ private:
 
     float bypassMix = 0.0f;
     float bypassSmoothingAlpha = 1.0f;
+    float finalOutputMeanSquare = 0.0f;
+    float finalOutputMeterAlpha = 1.0f;
 
     juce::CriticalSection abStateLock;
     ABState abStateA {};
@@ -98,6 +101,7 @@ private:
 
     std::atomic<float> inputMeterDb { -100.0f };
     std::atomic<float> outputMeterDb { -100.0f };
+    std::atomic<float> finalOutputMeterDb { -100.0f };
     std::atomic<float> riderMeterDb { 0.0f };
     std::atomic<float> compressorReductionDb { 0.0f };
     std::atomic<float> shortTermLufs { -100.0f };
