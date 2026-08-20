@@ -34,7 +34,7 @@ Santos Leveler is a VST3 voice processor designed to keep speech at a more consi
 
 The first Santos Leveler prototypes were created in **[MNodes](https://marionietoworld.com/mnodes/)**, the modular audio environment developed by **Mario Nieto**. MNodes was used to explore and validate the automatic voice-leveling concept before the project was reimplemented as a native C++/JUCE VST3 plugin.
 
-`historical MNodes prototype` is kept solely as a historical reference to that stage. The current version does not depend on MNodes at runtime.
+The current version does not depend on MNodes at runtime.
 
 More information: [HISTORY.md](HISTORY.md).
 
@@ -188,5 +188,4 @@ Modified versions should be clearly identified as modified and must not be prese
 
 ## Contact
 
-**Santos Leveler Project**  
 GitHub: `github.com/santosmanilva/Santos-Leveler`

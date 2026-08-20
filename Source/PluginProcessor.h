@@ -51,8 +51,8 @@ public:
     bool getRiderActive() const noexcept { return riderActive.load (std::memory_order_relaxed); }
     bool getTransportPlaying() const noexcept { return transportPlaying.load (std::memory_order_relaxed); }
     bool hasHostTransport() const noexcept { return hostTransportKnown.load (std::memory_order_relaxed); }
-    float getTruePeakReductionDb() const noexcept { return truePeakLimiter.getGainReductionDb(); }
-    float getDetectedTruePeakDbTP() const noexcept { return truePeakLimiter.getDetectedTruePeakDbTP(); }
+    float getTruePeakReductionDb() const noexcept { return truePeakReductionDb.load (std::memory_order_relaxed); }
+    float getDetectedTruePeakDbTP() const noexcept { return detectedTruePeakDbTP.load (std::memory_order_relaxed); }
     float getCompressorReductionDb() const noexcept { return compressorReductionDb.load (std::memory_order_relaxed); }
     float getMomentaryLufs() const noexcept { return momentaryLufs.load (std::memory_order_relaxed); }
     float getShortTermLufs() const noexcept { return shortTermLufs.load (std::memory_order_relaxed); }
@@ -107,6 +107,8 @@ private:
     std::atomic<float> shortTermLufs { -100.0f };
     std::atomic<float> integratedLufs { -100.0f };
     std::atomic<float> outputTruePeakDbTP { -100.0f };
+    std::atomic<float> truePeakReductionDb { 0.0f };
+    std::atomic<float> detectedTruePeakDbTP { -100.0f };
     std::atomic<bool> riderActive { false };
     std::atomic<bool> transportPlaying { true };
     std::atomic<bool> hostTransportKnown { false };

@@ -122,19 +122,18 @@ private:
                     << "Voice Auto Level Rider\n"
                     << "VST3 Audio Plugin " << juce::String::charToString (0x00b7) << " Windows x64\n\n"
                     << "Designed & Developed by\n"
-                    << "Jos" << juce::String::charToString (0x00e9) << " Antonio Santos Santos\n\n"
+                    << "Santos Leveler Project\n\n"
                     << "OPEN SOURCE\n"
                     << "GNU AGPL v3.0\n\n"
                     << "GitHub\n"
                     << "github.com/santosmanilva/SANTOS-LEVELER\n\n"
-                    << "Contact\n"
-                    << "github.com/santosmanilva/Santos-Leveler/issues\n\n"
+                    << "Support\n"
+                    << "github.com/santosmanilva/SANTOS-LEVELER/issues\n\n"
                     << "Built with JUCE\n"
                     << "True Peak " << juce::String::charToString (0x00b7)
                     << " LUFS M/S/I " << juce::String::charToString (0x00b7)
                     << " Voice Auto Level Rider\n\n"
-                    << juce::String::charToString (0x00a9) << " 2026 Jos"
-                    << juce::String::charToString (0x00e9) << " Antonio Santos Santos\n"
+                    << juce::String::charToString (0x00a9) << " 2026 Santos Leveler Project\n"
                     << "All rights reserved.";
 
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
@@ -354,8 +353,18 @@ private:
                 if (file == juce::File())
                     return;
 
+                constexpr juce::int64 maxPresetSizeBytes = 256 * 1024;
+                if (! file.existsAsFile() || file.getSize() <= 0 || file.getSize() > maxPresetSizeBytes)
+                {
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                            "Santos Leveler",
+                                                            "The preset file is empty or too large.");
+                    return;
+                }
+
                 auto xml = juce::XmlDocument::parse (file);
-                if (xml == nullptr || ! xml->hasTagName ("SANTOS_LEVELER_PRESET"))
+                if (xml == nullptr || ! xml->hasTagName ("SANTOS_LEVELER_PRESET")
+                    || xml->getIntAttribute ("version", -1) != 1)
                 {
                     juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                             "Santos Leveler",
@@ -370,6 +379,8 @@ private:
 
                     const auto id = child->getStringAttribute ("id");
                     const auto value = static_cast<float> (child->getDoubleAttribute ("value"));
+                    if (! std::isfinite (value))
+                        continue;
                     for (const auto* allowedId : parameterIds)
                     {
                         if (id == allowedId)

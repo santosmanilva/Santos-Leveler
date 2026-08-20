@@ -3,6 +3,7 @@
 
 namespace
 {
+constexpr int maxStateSizeBytes = 1024 * 1024;
 constexpr auto paramTarget        = "target";
 constexpr auto paramGate          = "gate";
 constexpr auto paramSpeed         = "speed";
@@ -222,6 +223,8 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
     shortTermLufs.store(-100.0f, std::memory_order_relaxed);
     integratedLufs.store(-100.0f, std::memory_order_relaxed);
     outputTruePeakDbTP.store(-100.0f, std::memory_order_relaxed);
+    truePeakReductionDb.store(0.0f, std::memory_order_relaxed);
+    detectedTruePeakDbTP.store(-100.0f, std::memory_order_relaxed);
 }
 
 void SantosLevelerAudioProcessor::releaseResources() {}
@@ -309,8 +312,8 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const float detectorL = left[i];
-        const float detectorR = right != nullptr ? right[i] : detectorL;
+        const float detectorL = std::isfinite (left[i]) ? left[i] : 0.0f;
+        const float detectorR = right != nullptr && std::isfinite (right[i]) ? right[i] : detectorL;
         inputPeak = std::max (inputPeak, std::max (std::abs (detectorL), std::abs (detectorR)));
 
         delayLeft[lookaheadWritePosition] = detectorL;
@@ -399,6 +402,8 @@ void SantosLevelerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     shortTermLufs.store(loudnessMeter.getShortTermLufs(), std::memory_order_relaxed);
     integratedLufs.store(loudnessMeter.getIntegratedLufs(), std::memory_order_relaxed);
     outputTruePeakDbTP.store(loudnessMeter.getMaxTruePeakDbTP(), std::memory_order_relaxed);
+    truePeakReductionDb.store(truePeakLimiter.getGainReductionDb(), std::memory_order_relaxed);
+    detectedTruePeakDbTP.store(truePeakLimiter.getDetectedTruePeakDbTP(), std::memory_order_relaxed);
 }
 
 void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
@@ -435,8 +440,25 @@ void SantosLevelerAudioProcessor::getStateInformation (juce::MemoryBlock& destDa
 
 void SantosLevelerAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    if (data == nullptr || sizeInBytes <= 0 || sizeInBytes > maxStateSizeBytes)
+        return;
+
     if (auto state = juce::ValueTree::readFromData (data, static_cast<std::size_t> (sizeInBytes)); state.isValid())
     {
+        if (! state.hasType (apvts.state.getType()))
+            return;
+
+        for (std::size_t i = 0; i < abParameterIds.size(); ++i)
+        {
+            for (const auto* prefix : { "abA", "abB" })
+            {
+                const auto property = abPropertyName (prefix, i);
+                if (state.hasProperty (property)
+                    && ! std::isfinite (static_cast<float> (state.getProperty (property))))
+                    return;
+            }
+        }
+
         apvts.replaceState (state);
         const auto current = captureCurrentABState();
         const juce::ScopedLock lock (abStateLock);
