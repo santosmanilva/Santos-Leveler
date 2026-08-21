@@ -55,7 +55,7 @@ public:
         inputSlowDetector.prepare (sampleRate, 300.0);
         outputDetector.prepare (sampleRate, 100.0);
 
-        controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / controlLoopRateHz)));
+        controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / SantosConstants::controlLoopRateHz)));
         reset();
     }
 
@@ -113,9 +113,6 @@ public:
         const auto controlInputDb = slowDb + detectorDeltaDb * fastWeight;
         const auto inputDb = controlInputDb;
 
-        // Peak envelope tracks the DELAYED signal (the one actually being processed),
-        // not the detector signal. This ensures peak limiting aligns with the
-        // rider output signal that feeds the compressor/limiter.
         const auto instantaneousPeak =
             numChannels > 1
                 ? std::max (std::abs (left), std::abs (right))
@@ -139,9 +136,6 @@ public:
             const auto minCorrectionDb = std::clamp (p.rangeDownDb, minRangeDownDb, maxRangeDownDb);
             const auto maxCorrectionDb = std::clamp (p.rangeUpDb, minRangeUpDb, maxRangeUpDb);
 
-            // Smart Gate: the knob remains the OPEN threshold. Once active, the
-            // detector must fall 3 dB below it before a close is even considered.
-            // A short grace period then ignores tiny gaps between syllables/words.
             const auto gateOpenDb = std::clamp (p.gateDb, minGateDb, maxGateDb);
             const auto gateCloseDb = std::max (-100.0f, gateOpenDb - gateHysteresisDb);
             const auto gateCloseGraceSamples = std::max (1, static_cast<int> (
@@ -177,10 +171,6 @@ public:
 
             auto preservedCorrectionDb = rawCorrectionDb;
 
-            // Preserve Dynamics V2 prototype:
-            // A fast rise above the slow phrase envelope is treated as a likely
-            // emphasis/transient. Only downward Rider correction is softened,
-            // leaving sustained loudness to be levelled normally once SLOW catches up.
             if (detectorActive && rawCorrectionDb < 0.0f)
             {
                 const auto transientDeltaDb = std::max (0.0f, detectorDeltaDb);
@@ -200,8 +190,6 @@ public:
 
             const auto heldNearZero = std::abs (heldCorrectionDb) < smoothingEpsilonDb;
             const auto newNearZero = std::abs (newCorrectionDb) < smoothingEpsilonDb;
-            const auto heldNearZero = std::abs (heldCorrectionDb) < epsilonDb;
-            const auto newNearZero = std::abs (newCorrectionDb) < epsilonDb;
 
             const bool sameDirection =
                 heldNearZero || newNearZero
@@ -251,14 +239,14 @@ public:
         if (! holdActive)
             heldCorrectionDb = latestRequestedCorrectionDb;
 
-        const auto intensity = std::clamp (p.intensityPercent, minIntensityPercent, maxIntensityPercent) * 0.01f;
+        const auto intensity = std::clamp (p.intensityPercent, SantosConstants::minIntensityPercent, SantosConstants::maxIntensityPercent) * 0.01f;
         const auto intensityScaledCorrectionDb = effectiveCorrectionDb * intensity;
         targetRiderGain = dbToGain (intensityScaledCorrectionDb);
 
         const auto currentRiderDb = gainToDb (currentRiderGain);
 
-        const auto currentNearZero = std::abs (currentRiderDb) < smoothingEpsilonDb;
-        const auto targetNearZero = std::abs (intensityScaledCorrectionDb) < smoothingEpsilonDb;
+        const auto currentNearZero = std::abs (currentRiderDb) < SantosConstants::smoothingEpsilonDb;
+        const auto targetNearZero = std::abs (intensityScaledCorrectionDb) < SantosConstants::smoothingEpsilonDb;
 
         const bool smoothingSameDirection =
             currentNearZero || targetNearZero
@@ -266,10 +254,10 @@ public:
 
         const bool movingTowardUnity =
             smoothingSameDirection
-            && std::abs (intensityScaledCorrectionDb) < std::abs (currentRiderDb) - smoothingEpsilonDb;
+            && std::abs (intensityScaledCorrectionDb) < std::abs (currentRiderDb) - SantosConstants::smoothingEpsilonDb;
 
-        const auto safeSpeedMs = std::clamp (p.speedMs, minSpeedMs, maxSpeedMs);
-        const auto safeReleaseMs = std::clamp (p.releaseMs, minReleaseMs, maxReleaseMs);
+        const auto safeSpeedMs = std::clamp (p.speedMs, SantosConstants::minSpeedMs, SantosConstants::maxSpeedMs);
+        const auto safeReleaseMs = std::clamp (p.releaseMs, SantosConstants::minReleaseMs, SantosConstants::maxReleaseMs);
 
         const auto riderAlpha =
             movingTowardUnity ? timeConstantAlpha (safeReleaseMs)
@@ -277,10 +265,9 @@ public:
 
         currentRiderGain += riderAlpha * (targetRiderGain - currentRiderGain);
 
-        const auto peakThresholdDb = std::clamp (p.peakThresholdDb, minPeakThresholdDb, maxPeakThresholdDb);
+        const auto peakThresholdDb = std::clamp (p.peakThresholdDb, SantosConstants::minPeakThresholdDb, SantosConstants::maxPeakThresholdDb);
         const auto predictedPeakDb = peakEnvelopeDb + gainToDb (currentRiderGain);
 
-        // When intensity is 0%, Peak 2 is completely bypassed (no detection, no reduction).
         if (intensity <= 0.0f)
         {
             peakReductionDb = 0.0f;
@@ -295,18 +282,18 @@ public:
 
         const auto currentPeakDb = gainToDb (currentPeakGain);
         const auto appliedPeakReductionDb = std::max (0.0f, -currentPeakDb);
-        const auto peakReleaseDepth = std::clamp (appliedPeakReductionDb / maxPeakReductionDb, 0.0f, 1.0f);
+        const auto peakReleaseDepth = std::clamp (appliedPeakReductionDb / SantosConstants::maxPeakReductionDb, 0.0f, 1.0f);
         const auto adaptivePeakReleaseMs =
-            peakReleaseFastMs + (peakReleaseSlowMs - peakReleaseFastMs) * peakReleaseDepth;
+            SantosConstants::peakReleaseFastMs + (SantosConstants::peakReleaseSlowMs - SantosConstants::peakReleaseFastMs) * peakReleaseDepth;
 
         const auto peakAlpha =
-            needsPeakReduction ? timeConstantAlpha (peakAttackMs)
+            needsPeakReduction ? timeConstantAlpha (SantosConstants::peakAttackMs)
                                : timeConstantAlpha (adaptivePeakReleaseMs);
 
         currentPeakGain += peakAlpha * (targetPeakGain - currentPeakGain);
 
-        const auto wantedOutputGain = dbToGain (std::clamp (p.outputDb, minOutputDb, maxOutputDb));
-        currentOutputGain += timeConstantAlpha (outputTrimSmoothingMs) * (wantedOutputGain - currentOutputGain);
+        const auto wantedOutputGain = dbToGain (std::clamp (p.outputDb, SantosConstants::minOutputDb, SantosConstants::maxOutputDb));
+        currentOutputGain += timeConstantAlpha (SantosConstants::outputTrimSmoothingMs) * (wantedOutputGain - currentOutputGain);
 
         const auto totalGain = currentRiderGain * currentPeakGain * currentOutputGain;
 
@@ -320,8 +307,6 @@ public:
         const auto outputRms = outputDetector.process (left, right, numChannels);
         const auto outputDb = gainToDb (outputRms);
 
-        // Release telemetry only: reuse values already computed by the DSP instead
-        // of doing extra per-sample dB conversions for the UI/history.
         lastTelemetry.inputDb = inputDb;
         lastTelemetry.riderDb = currentRiderDb;
         lastTelemetry.peakDb = currentPeakDb;
@@ -378,14 +363,11 @@ private:
             if (newWindow == windowSamples && newWindow == pendingWindowSamples)
                 return;
 
-            // Defer the window change to the next process() call to avoid
-            // O(window) recomputation on the audio thread during parameter changes.
             pendingWindowSamples = newWindow;
         }
 
         float process (float left, float right, int channels)
         {
-            // Apply pending window change at block boundary (first sample of process)
             if (pendingWindowSamples >= 0 && pendingWindowSamples != windowSamples)
             {
                 windowSamples = pendingWindowSamples;

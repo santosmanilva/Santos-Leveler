@@ -89,7 +89,7 @@ public:
 
     float getGainReductionDb() const noexcept { return std::min (0.0f, currentGainDb); }
 
-private:
+public:
     float timeConstantAlpha (float ms) const noexcept
     {
         const auto seconds = std::max (0.000001, static_cast<double> (ms) * 0.001);

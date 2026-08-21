@@ -77,13 +77,11 @@ public:
             ? std::clamp (currentCeilingLinear / std::max (truePeak, 1.0e-9f), 0.0f, 1.0f)
             : 1.0f;
 
-        // Instant attack is safe because the audio path is delayed by 1 ms.
-        // Hold covers the lookahead plus the FIR group delay samples before release begins.
         if (requiredGain < currentGain)
             currentGain = requiredGain;
 
         if (requiredGain < 1.0f)
-            holdSamplesRemaining = std::max (holdSamplesRemaining, lookaheadSamples + truePeakHoldExtraSamples);
+            holdSamplesRemaining = std::max<int> (holdSamplesRemaining, lookaheadSamples + static_cast<int>(SantosConstants::truePeakHoldExtraSamples));
 
         if (holdSamplesRemaining > 0)
         {
