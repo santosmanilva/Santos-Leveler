@@ -58,9 +58,9 @@ More information: [HISTORY.md](HISTORY.md).
 - **Range Down / Range Up** up to ±16 dB.
 - **Down Strength / Up Strength**.
 - Global **Intensity** for Rider and Peak 2.
-- **Peak 2** with adaptive release.
+- **Peak 2 (in Rider, adaptive release)**.
 - **Dynamics** section with feed-forward, stereo-linked soft-knee voice compressor.
-- Stereo-linked **True Peak Limiter** with Ceiling from -9 to -1 dBTP.
+- Stereo-linked **True Peak Limiter** (ITU-R BS.1770-5, fixed 120 ms release) with Ceiling from -9 to -1 dBTP.
 - Peak meters for Input, Leveler Out and Final Out.
 - **True Peak dBTP** and **LUFS-M / LUFS-S / LUFS-I** metering.
 - **Live Response** graph with individually switchable INPUT, RIDER, PEAK and LEVELER OUT traces.
@@ -78,13 +78,13 @@ Voice Auto Level Rider
   ├─ Smart Gate
   ├─ Preserve Dynamics
   ├─ Range / Strength / Intensity
-  └─ Peak 2
+  └─ Peak 2 (adaptive release)
   ↓
 LEVELER OUT trim
   ↓
-Voice Compressor
+Voice Compressor (stereo-linked, soft knee)
   ↓
-True Peak Limiter
+True Peak Limiter (ITU-R BS.1770-5, 1 ms lookahead)
   ↓
 Latency-aligned Bypass
   ↓

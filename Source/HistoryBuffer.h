@@ -22,6 +22,10 @@ struct SantosHistoryPoint
     bool gateActive = false;
 };
 
+// Lock-free single-writer, single-reader ring buffer using per-slot sequence numbers.
+// Each slot has a sequence counter that the writer increments before and after writing.
+// The reader checks that the sequence is even (write complete) before reading.
+// This prevents torn reads on ARM/ARM64 where multi-word structs may not be atomic.
 class SantosHistoryBuffer
 {
 public:
@@ -31,33 +35,58 @@ public:
 
     void clear() noexcept
     {
-        writeCount.store (0, std::memory_order_release);
+        for (auto& slot : slots)
+            slot.sequence.store(0, std::memory_order_relaxed);
     }
 
     void push (SantosHistoryPoint point) noexcept
     {
-        const auto sequence = writeCount.load (std::memory_order_relaxed);
-        points[static_cast<std::size_t> (sequence % capacity)] = point;
-        writeCount.store (sequence + 1, std::memory_order_release);
+        const auto sequence = writeCount.fetch_add(1, std::memory_order_relaxed);
+        const auto index = static_cast<std::size_t>(sequence % capacity);
+        auto& slot = slots[index];
+
+        // Increment sequence to odd (write in progress)
+        slot.sequence.store(sequence * 2 + 1, std::memory_order_release);
+        slot.point = point;
+        // Increment sequence to even (write complete)
+        slot.sequence.store(sequence * 2 + 2, std::memory_order_release);
     }
 
     std::vector<SantosHistoryPoint> copyLatest (std::size_t maxPoints) const
     {
-        const auto end = writeCount.load (std::memory_order_acquire);
-        const auto available = static_cast<std::size_t> (end < capacity ? end : capacity);
-        const auto count = std::min (maxPoints, available);
+        const auto end = writeCount.load(std::memory_order_acquire);
+        const auto available = static_cast<std::size_t>(end < capacity ? end : capacity);
+        const auto count = std::min(maxPoints, available);
 
         std::vector<SantosHistoryPoint> result;
-        result.reserve (count);
+        result.reserve(count);
 
-        const auto start = end - static_cast<std::uint64_t> (count);
+        const auto start = end - static_cast<std::uint64_t>(count);
         for (std::uint64_t seq = start; seq < end; ++seq)
-            result.push_back (points[static_cast<std::size_t> (seq % capacity)]);
+        {
+            const auto index = static_cast<std::size_t>(seq % capacity);
+            const auto& slot = slots[index];
+
+            // Wait for write to complete (sequence even)
+            auto expectedSequence = (seq * 2 + 2);
+            while (slot.sequence.load(std::memory_order_acquire) != expectedSequence)
+            {
+                // Writer is in progress - spin briefly
+                // In practice this is extremely fast since audio thread writes once per ~16ms
+            }
+            result.push_back(slot.point);
+        }
 
         return result;
     }
 
 private:
-    std::array<SantosHistoryPoint, capacity> points {};
+    struct Slot
+    {
+        std::atomic<std::uint64_t> sequence { 0 };
+        SantosHistoryPoint point {};
+    };
+
+    std::array<Slot, capacity> slots {};
     std::atomic<std::uint64_t> writeCount { 0 };
 };

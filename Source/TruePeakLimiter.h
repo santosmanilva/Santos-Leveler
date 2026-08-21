@@ -2,8 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <vector>
+
+#include "TruePeakCoefficients.h"
+#include "Constants.h"
+#include "DenormalProtection.h"
 
 class SantosTruePeakLimiter
 {
@@ -13,7 +18,8 @@ public:
         sampleRate = std::max (1.0, newSampleRate);
         numChannels = std::clamp (newNumChannels, 1, 2);
 
-        lookaheadSamples = std::max (1, static_cast<int> (std::round (sampleRate * 0.001)));
+        using namespace SantosConstants;
+        lookaheadSamples = std::max (1, static_cast<int> (std::round (sampleRate * (truePeakLookaheadMs * 0.001))));
         delayBufferSize = lookaheadSamples + 1;
 
         wetDelayL.assign (static_cast<std::size_t> (delayBufferSize), 0.0f);
@@ -21,20 +27,21 @@ public:
         dryDelayL.assign (static_cast<std::size_t> (delayBufferSize), 0.0f);
         dryDelayR.assign (static_cast<std::size_t> (delayBufferSize), 0.0f);
 
-        constexpr double releaseMs = 120.0;
         releaseAlpha = static_cast<float> (
-            1.0 - std::exp (-1.0 / (releaseMs * 0.001 * sampleRate)));
+            1.0 - std::exp (-1.0 / (truePeakReleaseMs * 0.001 * sampleRate)));
 
         reset();
     }
 
     void setCeilingDbTP (float dbTP) noexcept
     {
-        ceilingDbTP = std::clamp (dbTP, -9.0f, -1.0f);
-        ceilingLinear = std::pow (10.0f, ceilingDbTP / 20.0f);
+        using namespace SantosConstants;
+        const auto clamped = std::clamp (dbTP, minCeilingDbTP, maxCeilingDbTP);
+        ceilingDbTP.store (clamped, std::memory_order_release);
+        ceilingLinear.store (std::pow (10.0f, clamped / 20.0f), std::memory_order_release);
     }
 
-    float getCeilingDbTP() const noexcept { return ceilingDbTP; }
+    float getCeilingDbTP() const noexcept { return ceilingDbTP.load (std::memory_order_acquire); }
 
     void reset() noexcept
     {
@@ -63,20 +70,20 @@ public:
                   float& delayedDryR) noexcept
     {
         const auto truePeak = detectTruePeak (wetL, wetR);
-        latestTruePeakLinear = truePeak;
+        latestTruePeakLinear = denormalize(truePeak);
 
-        const auto requiredGain = truePeak > ceilingLinear
-            ? std::clamp (ceilingLinear / std::max (truePeak, 1.0e-9f), 0.0f, 1.0f)
+        const auto currentCeilingLinear = ceilingLinear.load (std::memory_order_acquire);
+        const auto requiredGain = truePeak > currentCeilingLinear
+            ? std::clamp (currentCeilingLinear / std::max (truePeak, 1.0e-9f), 0.0f, 1.0f)
             : 1.0f;
 
         // Instant attack is safe because the audio path is delayed by 1 ms.
-        // Hold covers the lookahead plus the ~6-sample group delay of the
-        // 48-tap / 4-phase ITU interpolation filter before release begins.
+        // Hold covers the lookahead plus the FIR group delay samples before release begins.
         if (requiredGain < currentGain)
             currentGain = requiredGain;
 
         if (requiredGain < 1.0f)
-            holdSamplesRemaining = std::max (holdSamplesRemaining, lookaheadSamples + 6);
+            holdSamplesRemaining = std::max (holdSamplesRemaining, lookaheadSamples + truePeakHoldExtraSamples);
 
         if (holdSamplesRemaining > 0)
         {
@@ -142,7 +149,7 @@ private:
                 {
                     value += detectorHistory[static_cast<std::size_t> (channel)]
                                             [static_cast<std::size_t> (historyIndex)]
-                             * coefficients[static_cast<std::size_t> (tap)]
+                             * SantosTruePeakCoefficients::values[static_cast<std::size_t> (tap)]
                                            [static_cast<std::size_t> (phase)];
 
                     if (--historyIndex < 0)
@@ -158,23 +165,6 @@ private:
 
         return maximum;
     }
-
-    // Recommendation ITU-R BS.1770-5, Annex 2:
-    // order-48, four-phase FIR interpolator for 4x true-peak estimation.
-    static constexpr std::array<std::array<float, 4>, 12> coefficients {{
-        {{  0.0017089843750f, -0.0291748046875f, -0.0189208984375f, -0.0083007812500f }},
-        {{  0.0109863281250f,  0.0292968750000f,  0.0330810546875f,  0.0148925781250f }},
-        {{ -0.0196533203125f, -0.0517578125000f, -0.0582275390625f, -0.0266113281250f }},
-        {{  0.0332031250000f,  0.0891113281250f,  0.1015625000000f,  0.0476074218750f }},
-        {{ -0.0594482421875f, -0.1665039062500f, -0.2003173828125f, -0.1022949218750f }},
-        {{  0.1373291015625f,  0.4650878906250f,  0.7797851562500f,  0.9721679687500f }},
-        {{  0.9721679687500f,  0.7797851562500f,  0.4650878906250f,  0.1373291015625f }},
-        {{ -0.1022949218750f, -0.2003173828125f, -0.1665039062500f, -0.0594482421875f }},
-        {{  0.0476074218750f,  0.1015625000000f,  0.0891113281250f,  0.0332031250000f }},
-        {{ -0.0266113281250f, -0.0582275390625f, -0.0517578125000f, -0.0196533203125f }},
-        {{  0.0148925781250f,  0.0330810546875f,  0.0292968750000f,  0.0109863281250f }},
-        {{ -0.0083007812500f, -0.0189208984375f, -0.0291748046875f,  0.0017089843750f }}
-    }};
 
     double sampleRate = 48000.0;
     int numChannels = 2;
@@ -194,6 +184,6 @@ private:
     float releaseAlpha = 1.0f;
     int holdSamplesRemaining = 0;
     float latestTruePeakLinear = 0.0f;
-    float ceilingDbTP = -1.0f;
-    float ceilingLinear = 0.891250938f;
+    std::atomic<float> ceilingDbTP { -1.0f };
+    std::atomic<float> ceilingLinear { 0.891250938f };
 };

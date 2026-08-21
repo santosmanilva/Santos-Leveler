@@ -5,17 +5,25 @@ on:
   push:
     branches: [ main, master ]
 
-env:
-  BUILD_DIR: build/windows-ci
-  PRODUCT_VERSION: 1.0.0
-
 jobs:
   windows-vst3:
     runs-on: windows-2022
+    env:
+      BUILD_DIR: build/windows-ci
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Extract version from CMakeLists.txt
+        id: version
+        shell: pwsh
+        run: |
+          $content = Get-Content CMakeLists.txt -Raw
+          $version = [regex]::Match($content, 'project\("Santos Leveler" VERSION\s+([\d.]+)').Groups[1].Value
+          if (-not $version) { throw "Could not extract version from CMakeLists.txt" }
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Configure
         shell: pwsh
@@ -41,6 +49,27 @@ jobs:
       - name: Upload VST3 artifact
         uses: actions/upload-artifact@v6
         with:
-          name: Santos-Leveler-v${{ env.PRODUCT_VERSION }}-Windows-x64-VST3
+          name: Santos-Leveler-v${{ env.VERSION }}-Windows-x64-VST3
           path: package
           if-no-files-found: error
+
+  # Linux build with sanitizers for additional coverage
+  linux-sanitizers:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_DIR: build/linux-sanitizers
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Configure with sanitizers
+        run: cmake -S . -B ${{ env.BUILD_DIR }} -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSANTOS_BUILD_DSP_TESTS=ON -DSANTOS_ENABLE_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build ${{ env.BUILD_DIR }}
+
+      - name: Run DSP tests with sanitizers
+        run: ctest --test-dir ${{ env.BUILD_DIR }} --output-on-failure

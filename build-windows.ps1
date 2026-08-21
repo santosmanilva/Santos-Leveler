@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== SANTOS LEVELER v1.0.0 - Windows x64 VST3 build ===" -ForegroundColor Cyan
+Write-Host "=== SANTOS LEVELER v1.0.1 - Windows x64 VST3 build ===" -ForegroundColor Cyan
 
 if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
     throw "CMake not found. Install CMake 3.22+ and reopen PowerShell."

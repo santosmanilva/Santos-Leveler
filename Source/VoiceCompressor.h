@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include "DenormalProtection.h"
+#include "Constants.h"
+
 class SantosVoiceCompressor
 {
 public:
@@ -31,23 +34,27 @@ public:
 
     void process (float& left, float& right, const Parameters& p) noexcept
     {
-        const auto detectorLinear = std::max (std::abs (left), std::abs (right));
+        // Stereo-linked detection: use the sum (mid) channel for envelope,
+        // so both channels get the same gain reduction.
+        const auto detectorLinear = (std::abs(left) + std::abs(right)) * 0.5f;
         const auto detectorDb = gainToDb (detectorLinear);
 
-        const auto safeAttackMs = std::clamp (p.attackMs, 0.5f, 100.0f);
-        const auto safeReleaseMs = std::clamp (p.releaseMs, 20.0f, 1000.0f);
+        using namespace SantosConstants;
+        const auto safeAttackMs = std::clamp (p.attackMs, minCompAttackMs, maxCompAttackMs);
+        const auto safeReleaseMs = std::clamp (p.releaseMs, minCompReleaseMs, maxCompReleaseMs);
         const auto envelopeAlpha = detectorDb > envelopeDb
             ? timeConstantAlpha (safeAttackMs)
             : timeConstantAlpha (safeReleaseMs);
         envelopeDb += envelopeAlpha * (detectorDb - envelopeDb);
+        envelopeDb = denormalize(envelopeDb);
 
         float targetReductionDb = 0.0f;
 
         if (p.enabled)
         {
-            const auto thresholdDb = std::clamp (p.thresholdDb, -36.0f, 0.0f);
-            const auto ratio = std::clamp (p.ratio, 1.0f, 10.0f);
-            constexpr float kneeDb = 6.0f;
+            const auto thresholdDb = std::clamp (p.thresholdDb, minCompThresholdDb, maxCompThresholdDb);
+            const auto ratio = std::clamp (p.ratio, minCompRatio, maxCompRatio);
+            const auto kneeDb = compressorKneeDb;
             const auto x = envelopeDb - thresholdDb;
 
             if (x <= -0.5f * kneeDb)
@@ -69,9 +76,11 @@ public:
             ? timeConstantAlpha (safeAttackMs)
             : timeConstantAlpha (p.enabled ? safeReleaseMs : 20.0f);
         currentGainDb += gainAlpha * (targetReductionDb - currentGainDb);
+        currentGainDb = denormalize(currentGainDb);
 
-        const auto targetMakeupDb = p.enabled ? std::clamp (p.makeupDb, 0.0f, 12.0f) : 0.0f;
+        const auto targetMakeupDb = p.enabled ? std::clamp (p.makeupDb, minCompMakeupDb, maxCompMakeupDb) : 0.0f;
         currentMakeupDb += timeConstantAlpha (20.0f) * (targetMakeupDb - currentMakeupDb);
+        currentMakeupDb = denormalize(currentMakeupDb);
 
         const auto totalGain = dbToGain (currentGainDb + currentMakeupDb);
         left *= totalGain;

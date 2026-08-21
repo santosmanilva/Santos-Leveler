@@ -6,6 +6,9 @@
 #include <cstddef>
 #include <vector>
 
+#include "DenormalProtection.h"
+#include "TruePeakCoefficients.h"
+
 class SantosLoudnessMeter
 {
 public:
@@ -124,6 +127,7 @@ private:
             const auto y = b0 * x + z1;
             z1 = b1 * x - a1 * y + z2;
             z2 = b2 * x - a2 * y;
+            denormalizeBiquadState(z1, z2);
             return y;
         }
 
@@ -286,7 +290,7 @@ private:
                 for (int tap = 0; tap < 12; ++tap)
                 {
                     value += truePeakHistory[static_cast<std::size_t> (channel)][static_cast<std::size_t> (historyIndex)]
-                           * truePeakCoefficients[static_cast<std::size_t> (tap)][static_cast<std::size_t> (phase)];
+                           * SantosTruePeakCoefficients::values[static_cast<std::size_t> (tap)][static_cast<std::size_t> (phase)];
                     if (--historyIndex < 0)
                         historyIndex = 11;
                 }
@@ -300,21 +304,6 @@ private:
         if (maximum > 1.0e-8f)
             maxTruePeakDbTP = std::max (maxTruePeakDbTP, 20.0f * std::log10 (maximum));
     }
-
-    static constexpr std::array<std::array<float, 4>, 12> truePeakCoefficients {{
-        {{  0.0017089843750f, -0.0291748046875f, -0.0189208984375f, -0.0083007812500f }},
-        {{  0.0109863281250f,  0.0292968750000f,  0.0330810546875f,  0.0148925781250f }},
-        {{ -0.0196533203125f, -0.0517578125000f, -0.0582275390625f, -0.0266113281250f }},
-        {{  0.0332031250000f,  0.0891113281250f,  0.1015625000000f,  0.0476074218750f }},
-        {{ -0.0594482421875f, -0.1665039062500f, -0.2003173828125f, -0.1022949218750f }},
-        {{  0.1373291015625f,  0.4650878906250f,  0.7797851562500f,  0.9721679687500f }},
-        {{  0.9721679687500f,  0.7797851562500f,  0.4650878906250f,  0.1373291015625f }},
-        {{ -0.1022949218750f, -0.2003173828125f, -0.1665039062500f, -0.0594482421875f }},
-        {{  0.0476074218750f,  0.1015625000000f,  0.0891113281250f,  0.0332031250f }},
-        {{ -0.0266113281250f, -0.0582275390625f, -0.0517578125000f, -0.0196533203125f }},
-        {{  0.0148925781250f,  0.0330810546875f,  0.0292968750f,  0.0109863281250f }},
-        {{ -0.0083007812500f, -0.0189208984375f, -0.0291748046875f,  0.0017089843750f }}
-    }};
 
     double sampleRate = 48000.0;
     int numChannels = 2;

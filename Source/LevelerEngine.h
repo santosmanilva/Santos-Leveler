@@ -5,6 +5,9 @@
 #include <cstddef>
 #include <vector>
 
+#include "DenormalProtection.h"
+#include "Constants.h"
+
 class SantosLevelerEngine
 {
 public:
@@ -52,7 +55,7 @@ public:
         inputSlowDetector.prepare (sampleRate, 300.0);
         outputDetector.prepare (sampleRate, 100.0);
 
-        controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / 240.0)));
+        controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / controlLoopRateHz)));
         reset();
     }
 
@@ -110,10 +113,13 @@ public:
         const auto controlInputDb = slowDb + detectorDeltaDb * fastWeight;
         const auto inputDb = controlInputDb;
 
+        // Peak envelope tracks the DELAYED signal (the one actually being processed),
+        // not the detector signal. This ensures peak limiting aligns with the
+        // rider output signal that feeds the compressor/limiter.
         const auto instantaneousPeak =
             numChannels > 1
-                ? std::max (std::abs (detectorLeft), std::abs (detectorRight))
-                : std::abs (detectorLeft);
+                ? std::max (std::abs (left), std::abs (right))
+                : std::abs (left);
 
         const auto instantaneousPeakDb = gainToDb (instantaneousPeak);
 
@@ -124,20 +130,20 @@ public:
 
         if (controlCountdown <= 0)
         {
+            using namespace SantosConstants;
             const auto errorDb = p.targetDb - controlInputDb;
-            const auto downStrength = std::clamp (p.downStrengthPercent, 0.0f, 100.0f) * 0.01f;
-            const auto upStrength = std::clamp (p.upStrengthPercent, 0.0f, 100.0f) * 0.01f;
+            const auto downStrength = std::clamp (p.downStrengthPercent, minStrengthPercent, maxStrengthPercent) * 0.01f;
+            const auto upStrength = std::clamp (p.upStrengthPercent, minStrengthPercent, maxStrengthPercent) * 0.01f;
             const auto scaledErrorDb = errorDb < 0.0f ? errorDb * downStrength
                                                       : errorDb * upStrength;
-            const auto minCorrectionDb = std::clamp (p.rangeDownDb, -16.0f, 0.0f);
-            const auto maxCorrectionDb = std::clamp (p.rangeUpDb, 0.0f, 16.0f);
+            const auto minCorrectionDb = std::clamp (p.rangeDownDb, minRangeDownDb, maxRangeDownDb);
+            const auto maxCorrectionDb = std::clamp (p.rangeUpDb, minRangeUpDb, maxRangeUpDb);
 
             // Smart Gate: the knob remains the OPEN threshold. Once active, the
             // detector must fall 3 dB below it before a close is even considered.
             // A short grace period then ignores tiny gaps between syllables/words.
-            const auto gateOpenDb = std::clamp (p.gateDb, -70.0f, -25.0f);
-            const auto gateCloseDb = std::max (-100.0f, gateOpenDb - 3.0f);
-            constexpr float gateCloseGraceMs = 80.0f;
+            const auto gateOpenDb = std::clamp (p.gateDb, minGateDb, maxGateDb);
+            const auto gateCloseDb = std::max (-100.0f, gateOpenDb - gateHysteresisDb);
             const auto gateCloseGraceSamples = std::max (1, static_cast<int> (
                 std::round (sampleRate * static_cast<double> (gateCloseGraceMs) * 0.001)));
 
@@ -151,7 +157,7 @@ public:
             }
             else
             {
-                if (controlInputDb > gateCloseDb)
+                if (controlInputDb >= gateCloseDb)
                 {
                     gateCloseSamplesRemaining = gateCloseGraceSamples;
                 }
@@ -177,10 +183,6 @@ public:
             // leaving sustained loudness to be levelled normally once SLOW catches up.
             if (detectorActive && rawCorrectionDb < 0.0f)
             {
-                constexpr float preserveStartDeltaDb = 3.0f;
-                constexpr float preserveFullDeltaDb = 12.0f;
-                constexpr float maxPreserveAmount = 0.35f;
-
                 const auto transientDeltaDb = std::max (0.0f, detectorDeltaDb);
                 const auto preserveStrength = std::clamp (
                     (transientDeltaDb - preserveStartDeltaDb)
@@ -196,7 +198,8 @@ public:
 
             latestRequestedCorrectionDb = newCorrectionDb;
 
-            constexpr float epsilonDb = 0.05f;
+            const auto heldNearZero = std::abs (heldCorrectionDb) < smoothingEpsilonDb;
+            const auto newNearZero = std::abs (newCorrectionDb) < smoothingEpsilonDb;
             const auto heldNearZero = std::abs (heldCorrectionDb) < epsilonDb;
             const auto newNearZero = std::abs (newCorrectionDb) < epsilonDb;
 
@@ -206,7 +209,7 @@ public:
 
             const bool relaxingTowardUnity =
                 sameDirection
-                && std::abs (newCorrectionDb) < std::abs (heldCorrectionDb) - epsilonDb;
+                && std::abs (newCorrectionDb) < std::abs (heldCorrectionDb) - smoothingEpsilonDb;
 
             const bool directionChanged =
                 ! heldNearZero && ! newNearZero && ! sameDirection;
@@ -219,7 +222,7 @@ public:
             }
             else if (! holdActive)
             {
-                const auto safeHoldMs = std::clamp (p.holdMs, 0.0f, 1000.0f);
+                const auto safeHoldMs = std::clamp (p.holdMs, minHoldMs, maxHoldMs);
                 holdSamplesRemaining = static_cast<int> (
                     std::round (sampleRate * static_cast<double> (safeHoldMs) * 0.001));
                 holdActive = holdSamplesRemaining > 0;
@@ -248,12 +251,11 @@ public:
         if (! holdActive)
             heldCorrectionDb = latestRequestedCorrectionDb;
 
-        const auto intensity = std::clamp (p.intensityPercent, 0.0f, 100.0f) * 0.01f;
+        const auto intensity = std::clamp (p.intensityPercent, minIntensityPercent, maxIntensityPercent) * 0.01f;
         const auto intensityScaledCorrectionDb = effectiveCorrectionDb * intensity;
         targetRiderGain = dbToGain (intensityScaledCorrectionDb);
 
         const auto currentRiderDb = gainToDb (currentRiderGain);
-        constexpr float smoothingEpsilonDb = 0.05f;
 
         const auto currentNearZero = std::abs (currentRiderDb) < smoothingEpsilonDb;
         const auto targetNearZero = std::abs (intensityScaledCorrectionDb) < smoothingEpsilonDb;
@@ -266,8 +268,8 @@ public:
             smoothingSameDirection
             && std::abs (intensityScaledCorrectionDb) < std::abs (currentRiderDb) - smoothingEpsilonDb;
 
-        const auto safeSpeedMs = std::clamp (p.speedMs, 2.0f, 250.0f);
-        const auto safeReleaseMs = std::clamp (p.releaseMs, 50.0f, 3000.0f);
+        const auto safeSpeedMs = std::clamp (p.speedMs, minSpeedMs, maxSpeedMs);
+        const auto safeReleaseMs = std::clamp (p.releaseMs, minReleaseMs, maxReleaseMs);
 
         const auto riderAlpha =
             movingTowardUnity ? timeConstantAlpha (safeReleaseMs)
@@ -275,10 +277,15 @@ public:
 
         currentRiderGain += riderAlpha * (targetRiderGain - currentRiderGain);
 
-        const auto peakThresholdDb = std::clamp (p.peakThresholdDb, -18.0f, -1.0f);
+        const auto peakThresholdDb = std::clamp (p.peakThresholdDb, minPeakThresholdDb, maxPeakThresholdDb);
         const auto predictedPeakDb = peakEnvelopeDb + gainToDb (currentRiderGain);
 
-        if (predictedPeakDb > peakThresholdDb)
+        // When intensity is 0%, Peak 2 is completely bypassed (no detection, no reduction).
+        if (intensity <= 0.0f)
+        {
+            peakReductionDb = 0.0f;
+        }
+        else if (predictedPeakDb > peakThresholdDb)
             peakReductionDb = std::clamp (peakThresholdDb - predictedPeakDb, -9.0f, 0.0f) * intensity;
         else
             peakReductionDb = 0.0f;
@@ -286,13 +293,9 @@ public:
         const auto targetPeakGain = dbToGain (peakReductionDb);
         const bool needsPeakReduction = targetPeakGain < currentPeakGain;
 
-        constexpr float peakAttackMs = 1.0f;
-        constexpr float peakReleaseFastMs = 70.0f;
-        constexpr float peakReleaseSlowMs = 160.0f;
-
         const auto currentPeakDb = gainToDb (currentPeakGain);
         const auto appliedPeakReductionDb = std::max (0.0f, -currentPeakDb);
-        const auto peakReleaseDepth = std::clamp (appliedPeakReductionDb / 9.0f, 0.0f, 1.0f);
+        const auto peakReleaseDepth = std::clamp (appliedPeakReductionDb / maxPeakReductionDb, 0.0f, 1.0f);
         const auto adaptivePeakReleaseMs =
             peakReleaseFastMs + (peakReleaseSlowMs - peakReleaseFastMs) * peakReleaseDepth;
 
@@ -302,8 +305,8 @@ public:
 
         currentPeakGain += peakAlpha * (targetPeakGain - currentPeakGain);
 
-        const auto wantedOutputGain = dbToGain (std::clamp (p.outputDb, -12.0f, 12.0f));
-        currentOutputGain += timeConstantAlpha (30.0f) * (wantedOutputGain - currentOutputGain);
+        const auto wantedOutputGain = dbToGain (std::clamp (p.outputDb, minOutputDb, maxOutputDb));
+        currentOutputGain += timeConstantAlpha (outputTrimSmoothingMs) * (wantedOutputGain - currentOutputGain);
 
         const auto totalGain = currentRiderGain * currentPeakGain * currentOutputGain;
 
@@ -363,6 +366,7 @@ private:
             filled = 0;
             windowSamples = 1;
             sumSquares = 0.0;
+            pendingWindowSamples = -1;
         }
 
         void setWindowMs (float ms)
@@ -371,15 +375,24 @@ private:
                 static_cast<int> (std::round (sampleRate * static_cast<double> (ms) * 0.001)),
                 1, maxSamples);
 
-            if (newWindow == windowSamples)
+            if (newWindow == windowSamples && newWindow == pendingWindowSamples)
                 return;
 
-            windowSamples = newWindow;
-            recomputeSum();
+            // Defer the window change to the next process() call to avoid
+            // O(window) recomputation on the audio thread during parameter changes.
+            pendingWindowSamples = newWindow;
         }
 
         float process (float left, float right, int channels)
         {
+            // Apply pending window change at block boundary (first sample of process)
+            if (pendingWindowSamples >= 0 && pendingWindowSamples != windowSamples)
+            {
+                windowSamples = pendingWindowSamples;
+                pendingWindowSamples = -1;
+                recomputeSum();
+            }
+
             const auto square = channels > 1 ? 0.5f * (left * left + right * right) : left * left;
 
             if (filled >= windowSamples)
@@ -394,10 +407,12 @@ private:
 
             history[static_cast<std::size_t> (writeIndex)] = square;
             sumSquares += static_cast<double> (square);
+            sumSquares = denormalize(sumSquares);
             writeIndex = (writeIndex + 1) % maxSamples;
 
             const auto denominator = std::max (1, std::min (filled, windowSamples));
-            return std::sqrt (static_cast<float> (std::max (0.0, sumSquares) / denominator));
+            const auto rms = std::sqrt (static_cast<float> (std::max (0.0, sumSquares) / denominator));
+            return denormalize(rms);
         }
 
     private:
@@ -415,6 +430,7 @@ private:
         double sampleRate = 48000.0;
         int maxSamples = 1;
         int windowSamples = 1;
+        int pendingWindowSamples = -1;
         int writeIndex = 0;
         int filled = 0;
         double sumSquares = 0.0;

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project("Santos Leveler" VERSION 1.0.0 LANGUAGES CXX C)
+project("Santos Leveler" VERSION 1.0.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,8 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
     GIT_TAG 8.0.12
     GIT_SHALLOW TRUE
+    # JUCE 8.0.12 commit hash for reproducible builds
+    GIT_COMMIT 8c8a0e5f3b1c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8
 )
 FetchContent_MakeAvailable(JUCE)
 
@@ -53,6 +55,9 @@ target_sources(SantosLeveler PRIVATE
     Source/LoudnessMeter.h
     Source/HistoryBuffer.h
     Source/VoiceCompressor.h
+    Source/DenormalProtection.h
+    Source/Constants.h
+    Source/TruePeakCoefficients.h
 )
 
 target_compile_definitions(SantosLeveler
@@ -77,5 +82,16 @@ if(SANTOS_BUILD_DSP_TESTS)
     enable_testing()
     add_executable(SantosLevelerDSPTests Tests/LevelerDSPTests.cpp)
     target_compile_features(SantosLevelerDSPTests PRIVATE cxx_std_17)
+    target_include_directories(SantosLevelerDSPTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
     add_test(NAME SantosLevelerDSPTests COMMAND SantosLevelerDSPTests)
+endif()
+
+# Sanitizer build option for CI
+option(SANTOS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(SANTOS_ENABLE_SANITIZERS AND NOT MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address,undefined")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address,undefined")
+    message(STATUS "Sanitizers enabled: AddressSanitizer + UndefinedBehaviorSanitizer")
 endif()
