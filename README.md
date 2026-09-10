@@ -1,9 +1,9 @@
-# Santos Leveler v1.0.1
+# Santos Leveler v1.0.2
 
 **Voice Auto Level Rider · VST3 · Windows x64 · Open Source**
 
 [![Build Windows VST3](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml/badge.svg)](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml)
-![Version](https://img.shields.io/badge/version-1.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.0.2-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-informational)
 ![Format](https://img.shields.io/badge/format-VST3-orange)
 ![JUCE](https://img.shields.io/badge/JUCE-8.0.12-4c8bf5)
@@ -14,15 +14,15 @@
 
 ## Descarga y manuales
 
-**[⬇ Descargar Santos Leveler v1.0.1 — Windows x64 VST3](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.1/Santos-Leveler-v1.0.1-Windows-x64-VST3.zip)**
+**[⬇ Descargar Santos Leveler v1.0.2 — Windows x64 VST3](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.2/Santos-Leveler-v1.0.2-Windows-x64-VST3.zip)**
 
 Última versión estable · Windows 10/11 x64 · VST3
 
 - **[Manual de usuario — Español (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-Manual-Usuario-ES.pdf)**
 - **[User Manual — English (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-User-Manual-EN.pdf)**
-- [Ver la Release v1.0.1](https://github.com/santosmanilva/Santos-Leveler/releases/tag/v1.0.1)
+- [Ver la Release v1.0.2](https://github.com/santosmanilva/Santos-Leveler/releases/tag/v1.0.2)
 
-> Los manuales publicados para v1.0.0 siguen siendo válidos para v1.0.1. La actualización v1.0.1 es de mantenimiento y refactorización y no modifica los controles ni los valores de usuario documentados.
+> Los manuales publicados para v1.0.0 siguen siendo válidos para v1.0.2. Las versiones 1.0.1 y 1.0.2 son actualizaciones de mantenimiento y no modifican los controles ni los valores de usuario documentados.
 
 ![Santos Leveler](docs/santos-leveler-v1.0.0.jpg)
 
@@ -95,7 +95,7 @@ Peak / True Peak / LUFS
 OUTPUT
 ```
 
-## Parámetros Default v1.0.1
+## Parámetros Default v1.0.2
 
 | Parámetro | Default |
 |---|---:|
