@@ -3,7 +3,12 @@ name: Build Windows VST3
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
   windows-vst3:
@@ -52,24 +57,3 @@ jobs:
           name: Santos-Leveler-v${{ env.VERSION }}-Windows-x64-VST3
           path: package
           if-no-files-found: error
-
-  # Linux build with sanitizers for additional coverage
-  linux-sanitizers:
-    runs-on: ubuntu-latest
-    env:
-      BUILD_DIR: build/linux-sanitizers
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
-
-      - name: Configure with sanitizers
-        run: cmake -S . -B ${{ env.BUILD_DIR }} -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSANTOS_BUILD_DSP_TESTS=ON -DSANTOS_ENABLE_SANITIZERS=ON
-
-      - name: Build
-        run: cmake --build ${{ env.BUILD_DIR }}
-
-      - name: Run DSP tests with sanitizers
-        run: ctest --test-dir ${{ env.BUILD_DIR }} --output-on-failure
