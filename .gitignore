@@ -1,3 +1,24 @@
+# Visual Studio / IDE
 .vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# CMake / build output
 build/
 out/
+cmake-build-*/
+CMakeUserPresets.json
+Testing/
+
+# Packaging / temporary output
+package/
+*.tmp
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
