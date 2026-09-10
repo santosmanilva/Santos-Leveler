@@ -39,7 +39,7 @@ namespace SantosConstants
 
     // True peak limiter
     constexpr float truePeakLookaheadMs = 1.0f;     // 1 ms lookahead
-    constexpr float truePeakHoldExtraSamples = 6;   // Extra hold samples for FIR group delay
+    constexpr int truePeakHoldExtraSamples = 6;   // Extra hold samples for FIR group delay
     constexpr float truePeakReleaseMs = 120.0f;     // Release time for true peak limiter
 
     // Bypass crossfade time (seconds)

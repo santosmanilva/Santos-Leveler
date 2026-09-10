@@ -123,7 +123,7 @@ public:
         if (instantaneousPeakDb > peakEnvelopeDb)
             peakEnvelopeDb = instantaneousPeakDb;
         else
-            peakEnvelopeDb += timeConstantAlpha (80.0f) * (instantaneousPeakDb - peakEnvelopeDb);
+            peakEnvelopeDb += timeConstantAlpha (SantosConstants::peakEnvelopeReleaseMs) * (instantaneousPeakDb - peakEnvelopeDb);
 
         if (controlCountdown <= 0)
         {
@@ -273,7 +273,7 @@ public:
             peakReductionDb = 0.0f;
         }
         else if (predictedPeakDb > peakThresholdDb)
-            peakReductionDb = std::clamp (peakThresholdDb - predictedPeakDb, -9.0f, 0.0f) * intensity;
+            peakReductionDb = std::clamp (peakThresholdDb - predictedPeakDb, -SantosConstants::maxPeakReductionDb, 0.0f) * intensity;
         else
             peakReductionDb = 0.0f;
 

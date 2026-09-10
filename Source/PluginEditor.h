@@ -118,23 +118,23 @@ private:
         void clicked() override
         {
             juce::String message;
-            message << "Version 1.0.0\n\n"
+            message << "Version " << JucePlugin_VersionString << "\n\n"
                     << "Voice Auto Level Rider\n"
                     << "VST3 Audio Plugin " << juce::String::charToString (0x00b7) << " Windows x64\n\n"
                     << "Designed & Developed by\n"
-                    << "Santos Leveler Project\n\n"
+                    << "Jos" << juce::String::charToString (0x00e9) << " Antonio Santos Santos\n\n"
                     << "OPEN SOURCE\n"
                     << "GNU AGPL v3.0\n\n"
                     << "GitHub\n"
-                    << "github.com/santosmanilva/SANTOS-LEVELER\n\n"
+                    << "github.com/santosmanilva/Santos-Leveler\n\n"
                     << "Support\n"
-                    << "github.com/santosmanilva/SANTOS-LEVELER/issues\n\n"
+                    << "github.com/santosmanilva/Santos-Leveler/issues\n\n"
                     << "Built with JUCE\n"
                     << "True Peak " << juce::String::charToString (0x00b7)
                     << " LUFS M/S/I " << juce::String::charToString (0x00b7)
                     << " Voice Auto Level Rider\n\n"
-                    << juce::String::charToString (0x00a9) << " 2026 Santos Leveler Project\n"
-                    << "All rights reserved.";
+                    << juce::String::charToString (0x00a9) << " 2026 Jos" << juce::String::charToString (0x00e9) << " Antonio Santos Santos\n"
+                    << "Licensed under GNU AGPL v3.0.";
 
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
                                                     "Santos Leveler",

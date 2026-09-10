@@ -155,7 +155,7 @@ static void testStereoLinkedCompressor()
     assert(std::abs(compR - expectedR) < 0.01f);
 }
 
-// Test true-peak inter-sample peak (Nyquist sine)
+// Test true-peak inter-sample peak (Fs/4 sine)
 static void testTruePeakInterSamplePeak()
 {
     constexpr double sr = 48000.0;
@@ -191,7 +191,7 @@ static void testLoudnessIntegratedGating()
 
     constexpr float pi = 3.14159265358979323846f;
 
-    // First 2 seconds: -30 LUFS (below -70 absolute gate but above relative)
+    // First 2 seconds: a low-level tone that remains above the absolute loudness gate
     for (int i = 0; i < static_cast<int>(sr * 2.0); ++i)
     {
         const auto sample = 0.0316f * std::sin(2.0f * pi * 1000.0f * static_cast<float>(i) / static_cast<float>(sr)); // ~-30 dBFS
@@ -208,53 +208,6 @@ static void testLoudnessIntegratedGating()
     // But wait for the 1-second update interval
     // Just verify it doesn't read -100 (which would mean everything gated)
     assert(loudness.getIntegratedLufs() > -99.0f);
-}
-
-// Test lookahead latency alignment
-static void testLookaheadLatency()
-{
-    constexpr double sr = 48000.0;
-    SantosLevelerEngine engine;
-    engine.prepare(sr, 2);
-
-    SantosLevelerEngine::Parameters p;
-    p.targetDb = -20.0f;
-    p.gateDb = -70.0f;
-    p.speedMs = 15.0f;
-    p.detectMs = 8.0f;
-    p.rangeUpDb = 12.0f;
-    p.rangeDownDb = -12.0f;
-    p.intensityPercent = 100.0f;
-    p.outputDb = 0.0f;
-    p.lookaheadMs = 30.0f;
-    p.holdMs = 0.0f;
-    p.releaseMs = 100.0f;
-
-    // Impulse at sample 0
-    float impulseL = 1.0f;
-    float impulseR = 1.0f;
-    engine.processSample(impulseL, impulseR, p);
-
-    // Process silence after
-    int nonZeroCount = 0;
-    int firstNonZero = -1;
-    for (int i = 1; i < static_cast<int>(sr * 0.05); ++i)
-    {
-        impulseL = 0.0f;
-        impulseR = 0.0f;
-        engine.processSample(impulseL, impulseR, p);
-        if (std::abs(impulseL) > 1e-6f && firstNonZero < 0)
-        {
-            firstNonZero = i;
-        }
-        if (std::abs(impulseL) > 1e-6f) nonZeroCount++;
-    }
-
-    // With lookahead of 30ms at 48kHz = 1440 samples, the impulse should
-    // appear in output after the lookahead delay
-    // (This is a basic check; exact alignment depends on engine internals)
-    // Just verify the engine runs without crash
-    assert(firstNonZero >= 0 || true);  // Accept any result for this basic test
 }
 
 // Test parameter boundary values
@@ -526,7 +479,6 @@ int main()
     testStereoLinkedCompressor();
     testTruePeakInterSamplePeak();
     testLoudnessIntegratedGating();
-    testLookaheadLatency();
     testParameterBoundaries();
     testSampleRateChange();
 

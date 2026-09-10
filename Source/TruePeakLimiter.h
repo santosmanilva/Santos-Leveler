@@ -81,7 +81,7 @@ public:
             currentGain = requiredGain;
 
         if (requiredGain < 1.0f)
-            holdSamplesRemaining = std::max<int> (holdSamplesRemaining, lookaheadSamples + static_cast<int>(SantosConstants::truePeakHoldExtraSamples));
+            holdSamplesRemaining = std::max<int> (holdSamplesRemaining, lookaheadSamples + SantosConstants::truePeakHoldExtraSamples);
 
         if (holdSamplesRemaining > 0)
         {
