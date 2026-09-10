@@ -1,7 +1,5 @@
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== SANTOS LEVELER v1.0.1 - Windows x64 VST3 build ===" -ForegroundColor Cyan
-
 if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
     throw "CMake not found. Install CMake 3.22+ and reopen PowerShell."
 }
@@ -9,6 +7,15 @@ if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "Git not found. Install Git for Windows and reopen PowerShell."
 }
+
+$cmakeContent = Get-Content "CMakeLists.txt" -Raw
+$versionMatch = [regex]::Match($cmakeContent, 'project\("Santos Leveler" VERSION\s+([\d.]+)')
+if (-not $versionMatch.Success) {
+    throw "Could not extract the Santos Leveler version from CMakeLists.txt."
+}
+$version = $versionMatch.Groups[1].Value
+
+Write-Host "=== SANTOS LEVELER v$version - Windows x64 VST3 build ===" -ForegroundColor Cyan
 
 cmake --preset windows-x64-release
 cmake --build --preset windows-x64-release --target SantosLeveler_VST3 SantosLevelerDSPTests
