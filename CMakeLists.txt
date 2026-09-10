@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project("Santos Leveler" VERSION 1.0.1 LANGUAGES CXX C)
+project("Santos Leveler" VERSION 1.0.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
