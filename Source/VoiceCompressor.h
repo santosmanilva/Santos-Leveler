@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
-#include "DenormalProtection.h"
 #include "Constants.h"
+#include "DenormalProtection.h"
 
 class SantosVoiceCompressor
 {
@@ -34,9 +34,9 @@ public:
 
     void process (float& left, float& right, const Parameters& p) noexcept
     {
-        // Stereo-linked detection: use the sum (mid) channel for envelope,
-        // so both channels get the same gain reduction.
-        const auto detectorLinear = (std::abs(left) + std::abs(right)) * 0.5f;
+        // Stereo-linked detection from the mean absolute magnitude of both channels,
+        // so left and right always receive the same gain reduction.
+        const auto detectorLinear = (std::abs (left) + std::abs (right)) * 0.5f;
         const auto detectorDb = gainToDb (detectorLinear);
 
         using namespace SantosConstants;
@@ -46,7 +46,7 @@ public:
             ? timeConstantAlpha (safeAttackMs)
             : timeConstantAlpha (safeReleaseMs);
         envelopeDb += envelopeAlpha * (detectorDb - envelopeDb);
-        envelopeDb = denormalize(envelopeDb);
+        envelopeDb = denormalize (envelopeDb);
 
         float targetReductionDb = 0.0f;
 
@@ -76,11 +76,13 @@ public:
             ? timeConstantAlpha (safeAttackMs)
             : timeConstantAlpha (p.enabled ? safeReleaseMs : 20.0f);
         currentGainDb += gainAlpha * (targetReductionDb - currentGainDb);
-        currentGainDb = denormalize(currentGainDb);
+        currentGainDb = denormalize (currentGainDb);
 
-        const auto targetMakeupDb = p.enabled ? std::clamp (p.makeupDb, minCompMakeupDb, maxCompMakeupDb) : 0.0f;
+        const auto targetMakeupDb = p.enabled
+            ? std::clamp (p.makeupDb, minCompMakeupDb, maxCompMakeupDb)
+            : 0.0f;
         currentMakeupDb += timeConstantAlpha (20.0f) * (targetMakeupDb - currentMakeupDb);
-        currentMakeupDb = denormalize(currentMakeupDb);
+        currentMakeupDb = denormalize (currentMakeupDb);
 
         const auto totalGain = dbToGain (currentGainDb + currentMakeupDb);
         left *= totalGain;
@@ -88,13 +90,6 @@ public:
     }
 
     float getGainReductionDb() const noexcept { return std::min (0.0f, currentGainDb); }
-
-public:
-    float timeConstantAlpha (float ms) const noexcept
-    {
-        const auto seconds = std::max (0.000001, static_cast<double> (ms) * 0.001);
-        return static_cast<float> (1.0 - std::exp (-1.0 / (seconds * sampleRate)));
-    }
 
     static float dbToGain (float db) noexcept
     {
@@ -106,6 +101,13 @@ public:
         if (gain <= 1.0e-8f)
             return -100.0f;
         return std::max (-100.0f, 20.0f * std::log10 (gain));
+    }
+
+private:
+    float timeConstantAlpha (float ms) const noexcept
+    {
+        const auto seconds = std::max (0.000001, static_cast<double> (ms) * 0.001);
+        return static_cast<float> (1.0 - std::exp (-1.0 / (seconds * sampleRate)));
     }
 
     double sampleRate = 48000.0;
