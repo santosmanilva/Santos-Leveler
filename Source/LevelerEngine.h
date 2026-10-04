@@ -3,46 +3,36 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <utility>
 #include <vector>
-
-#include "DenormalProtection.h"
-#include "Constants.h"
 
 class SantosLevelerEngine
 {
 public:
+    // Upper bound for the Lookahead parameter. Kept here (rather than only
+    // in the processor's parameter layout) so the engine's delay line and
+    // the UI range can never drift out of sync.
+    static constexpr float maxLookaheadMs = 20.0f;
+
     struct Parameters
     {
-        float targetDb = -19.0f;
-        float gateDb = -45.0f;
-        float speedMs = 15.0f;
-        float detectMs = 8.0f;
-        float lookaheadMs = 30.0f;
-        float holdMs = 50.0f;
-        float releaseMs = 500.0f;
-        float peakThresholdDb = -9.0f;
-        float rangeDownDb = -12.0f;
-        float downStrengthPercent = 100.0f;
-        float rangeUpDb = 9.0f;
-        float upStrengthPercent = 100.0f;
-        float intensityPercent = 100.0f;
-        float outputDb = 0.0f;
+        float targetDb      = -20.0f;
+        float gateDb        = -45.0f;
+        float attackMs      = 12.0f;   // time constant while pulling gain DOWN (input louder than target)
+        float releaseMs     = 45.0f;   // time constant while raising gain back UP (input quieter than target)
+        float detectMs      = 8.0f;
+        float rangeDownDb   = -9.0f;
+        float rangeUpDb     = 9.0f;
+        float lookaheadMs   = 8.0f;    // 0 = disabled
+        float ceilingDb     = -0.3f;   // safety limiter threshold
+        float outputDb      = 0.0f;
     };
 
     struct Telemetry
     {
-        float inputDb = -100.0f;
-        float fastDb = -100.0f;
-        float slowDb = -100.0f;
-        float controlDb = -100.0f;
-        float requestedRiderDb = 0.0f;
-        float effectiveRiderDb = 0.0f;
-        float riderDb = 0.0f;
-        float peakEnvelopeDb = -100.0f;
-        float peakReductionDb = 0.0f;
-        float peakDb = 0.0f;
+        float inputDb  = -100.0f;
+        float riderDb  = 0.0f;
         float outputDb = -100.0f;
-        bool gateActive = false;
         bool riderActive = false;
     };
 
@@ -50,275 +40,127 @@ public:
     {
         sampleRate = std::max (1.0, newSampleRate);
         numChannels = std::clamp (newNumChannels, 1, 2);
-
-        inputFastDetector.prepare (sampleRate, 100.0);
-        inputSlowDetector.prepare (sampleRate, 300.0);
+        inputDetector.prepare (sampleRate, 100.0);
         outputDetector.prepare (sampleRate, 100.0);
-
-        controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / SantosConstants::controlLoopRateHz)));
+        controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / 240.0)));
+        lookaheadLine.prepare (sampleRate, maxLookaheadMs);
         reset();
     }
 
     void reset()
     {
-        inputFastDetector.reset();
-        inputSlowDetector.reset();
+        inputDetector.reset();
         outputDetector.reset();
+        lookaheadLine.reset();
         controlCountdown = 0;
         currentRiderGain = 1.0f;
         targetRiderGain = 1.0f;
         currentOutputGain = 1.0f;
-        latestRequestedCorrectionDb = 0.0f;
-        heldCorrectionDb = 0.0f;
-        holdSamplesRemaining = 0;
-        holdActive = false;
-        detectorActive = false;
-        gateCloseSamplesRemaining = 0;
-
-        peakEnvelopeDb = -100.0f;
-        peakReductionDb = 0.0f;
-        currentPeakGain = 1.0f;
+        limiterGain = 1.0f;
+        gateOpen = false;
         riderActive = false;
         lastTelemetry = {};
     }
 
     Telemetry processSample (float& left, float& right, const Parameters& p)
     {
-        const auto detectorLeft = left;
-        const auto detectorRight = right;
-        return processSampleLookahead (detectorLeft, detectorRight, left, right, p);
-    }
+        const auto detectMs = std::clamp (p.detectMs, 1.0f, 100.0f);
+        inputDetector.setWindowMs (detectMs);
+        outputDetector.setWindowMs (detectMs);
 
-    Telemetry processSampleLookahead (float detectorLeft,
-                                      float detectorRight,
-                                      float& left,
-                                      float& right,
-                                      const Parameters& p)
-    {
-        const auto fastDetectMs = std::clamp (p.detectMs, 1.0f, 100.0f);
-        const auto slowDetectMs = std::clamp (fastDetectMs * 12.0f, 70.0f, 250.0f);
-
-        inputFastDetector.setWindowMs (fastDetectMs);
-        inputSlowDetector.setWindowMs (slowDetectMs);
-        outputDetector.setWindowMs (fastDetectMs);
-
-        const auto fastRms = inputFastDetector.process (detectorLeft, detectorRight, numChannels);
-        const auto slowRms = inputSlowDetector.process (detectorLeft, detectorRight, numChannels);
-
-        const auto fastDb = gainToDb (fastRms);
-        const auto slowDb = gainToDb (slowRms);
-
-        const auto detectorDeltaDb = fastDb - slowDb;
-        const auto fastWeight = detectorDeltaDb >= 0.0f ? 0.78f : 0.22f;
-        const auto controlInputDb = slowDb + detectorDeltaDb * fastWeight;
-        const auto inputDb = controlInputDb;
-
-        const auto instantaneousPeak =
-            numChannels > 1
-                ? std::max (std::abs (left), std::abs (right))
-                : std::abs (left);
-
-        const auto instantaneousPeakDb = gainToDb (instantaneousPeak);
-
-        if (instantaneousPeakDb > peakEnvelopeDb)
-            peakEnvelopeDb = instantaneousPeakDb;
-        else
-            peakEnvelopeDb += timeConstantAlpha (SantosConstants::peakEnvelopeReleaseMs) * (instantaneousPeakDb - peakEnvelopeDb);
+        // Detection runs on the LIVE input, before it enters the lookahead
+        // delay line below. That gives the gain a head start: by the time
+        // the matching audio sample comes out of the delay line, the
+        // smoothed rider gain has already had `lookaheadMs` to catch up.
+        const auto inputRms = inputDetector.process (left, right, numChannels);
+        const auto inputDb = gainToDb (inputRms);
 
         if (controlCountdown <= 0)
         {
-            using namespace SantosConstants;
-            const auto errorDb = p.targetDb - controlInputDb;
-            const auto downStrength = std::clamp (p.downStrengthPercent, minStrengthPercent, maxStrengthPercent) * 0.01f;
-            const auto upStrength = std::clamp (p.upStrengthPercent, minStrengthPercent, maxStrengthPercent) * 0.01f;
-            const auto scaledErrorDb = errorDb < 0.0f ? errorDb * downStrength
-                                                      : errorDb * upStrength;
-            const auto minCorrectionDb = std::clamp (p.rangeDownDb, minRangeDownDb, maxRangeDownDb);
-            const auto maxCorrectionDb = std::clamp (p.rangeUpDb, minRangeUpDb, maxRangeUpDb);
+            const auto errorDb = p.targetDb - inputDb;
 
-            const auto gateOpenDb = std::clamp (p.gateDb, minGateDb, maxGateDb);
-            const auto gateCloseDb = std::max (-100.0f, gateOpenDb - gateHysteresisDb);
-            const auto gateCloseGraceSamples = std::max (1, static_cast<int> (
-                std::round (sampleRate * static_cast<double> (gateCloseGraceMs) * 0.001)));
+            // Preserve the behaviour of the working MNodes v17:
+            // positive and negative correction are each limited to +/-12 dB,
+            // then proportionally scaled by Range Up/Down.
+            const auto positive = std::clamp (errorDb, 0.0f, 12.0f)
+                                * (std::clamp (p.rangeUpDb, 0.0f, 12.0f) / 12.0f);
 
-            if (! detectorActive)
+            const auto negative = std::clamp (errorDb, -12.0f, 0.0f)
+                                * (std::clamp (-p.rangeDownDb, 0.0f, 12.0f) / 12.0f);
+
+            // Schmitt-trigger gate: opens when the input rises above Gate,
+            // but only closes once it falls `gateHysteresisDb` below Gate.
+            // That dead zone stops the gate chattering open/closed when the
+            // signal sits right on the threshold.
+            if (gateOpen)
             {
-                if (controlInputDb >= gateOpenDb)
-                {
-                    detectorActive = true;
-                    gateCloseSamplesRemaining = gateCloseGraceSamples;
-                }
+                if (inputDb < p.gateDb - gateHysteresisDb)
+                    gateOpen = false;
             }
-            else
+            else if (inputDb > p.gateDb)
             {
-                if (controlInputDb >= gateCloseDb)
-                {
-                    gateCloseSamplesRemaining = gateCloseGraceSamples;
-                }
-                else
-                {
-                    gateCloseSamplesRemaining = std::max (
-                        0,
-                        gateCloseSamplesRemaining - controlPeriodSamples);
-
-                    if (gateCloseSamplesRemaining == 0)
-                        detectorActive = false;
-                }
+                gateOpen = true;
             }
 
-            const auto rawCorrectionDb =
-                std::clamp (scaledErrorDb, minCorrectionDb, maxCorrectionDb);
+            const auto correctionDb = gateOpen ? (positive + negative) : 0.0f;
 
-            auto preservedCorrectionDb = rawCorrectionDb;
-
-            if (detectorActive && rawCorrectionDb < 0.0f)
-            {
-                const auto transientDeltaDb = std::max (0.0f, detectorDeltaDb);
-                const auto preserveStrength = std::clamp (
-                    (transientDeltaDb - preserveStartDeltaDb)
-                        / (preserveFullDeltaDb - preserveStartDeltaDb),
-                    0.0f,
-                    1.0f);
-
-                preservedCorrectionDb *= (1.0f - maxPreserveAmount * preserveStrength);
-            }
-
-            const auto newCorrectionDb =
-                detectorActive ? preservedCorrectionDb : 0.0f;
-
-            latestRequestedCorrectionDb = newCorrectionDb;
-
-            const auto heldNearZero = std::abs (heldCorrectionDb) < smoothingEpsilonDb;
-            const auto newNearZero = std::abs (newCorrectionDb) < smoothingEpsilonDb;
-
-            const bool sameDirection =
-                heldNearZero || newNearZero
-                || ((heldCorrectionDb > 0.0f) == (newCorrectionDb > 0.0f));
-
-            const bool relaxingTowardUnity =
-                sameDirection
-                && std::abs (newCorrectionDb) < std::abs (heldCorrectionDb) - smoothingEpsilonDb;
-
-            const bool directionChanged =
-                ! heldNearZero && ! newNearZero && ! sameDirection;
-
-            if (directionChanged || ! relaxingTowardUnity)
-            {
-                heldCorrectionDb = newCorrectionDb;
-                holdActive = false;
-                holdSamplesRemaining = 0;
-            }
-            else if (! holdActive)
-            {
-                const auto safeHoldMs = std::clamp (p.holdMs, minHoldMs, maxHoldMs);
-                holdSamplesRemaining = static_cast<int> (
-                    std::round (sampleRate * static_cast<double> (safeHoldMs) * 0.001));
-                holdActive = holdSamplesRemaining > 0;
-            }
-
+            targetRiderGain = dbToGain (correctionDb);
+            riderActive = gateOpen && std::abs (correctionDb) > 0.01f;
             controlCountdown = controlPeriodSamples;
         }
-
         --controlCountdown;
 
-        if (holdActive)
-        {
-            if (holdSamplesRemaining > 0)
-                --holdSamplesRemaining;
-
-            if (holdSamplesRemaining <= 0)
-            {
-                holdActive = false;
-                heldCorrectionDb = latestRequestedCorrectionDb;
-            }
-        }
-
-        const auto effectiveCorrectionDb =
-            holdActive ? heldCorrectionDb : latestRequestedCorrectionDb;
-
-        if (! holdActive)
-            heldCorrectionDb = latestRequestedCorrectionDb;
-
-        const auto intensity = std::clamp (p.intensityPercent, SantosConstants::minIntensityPercent, SantosConstants::maxIntensityPercent) * 0.01f;
-        const auto intensityScaledCorrectionDb = effectiveCorrectionDb * intensity;
-        targetRiderGain = dbToGain (intensityScaledCorrectionDb);
-
-        const auto currentRiderDb = gainToDb (currentRiderGain);
-
-        const auto currentNearZero = std::abs (currentRiderDb) < SantosConstants::smoothingEpsilonDb;
-        const auto targetNearZero = std::abs (intensityScaledCorrectionDb) < SantosConstants::smoothingEpsilonDb;
-
-        const bool smoothingSameDirection =
-            currentNearZero || targetNearZero
-            || ((currentRiderDb > 0.0f) == (intensityScaledCorrectionDb > 0.0f));
-
-        const bool movingTowardUnity =
-            smoothingSameDirection
-            && std::abs (intensityScaledCorrectionDb) < std::abs (currentRiderDb) - SantosConstants::smoothingEpsilonDb;
-
-        const auto safeSpeedMs = std::clamp (p.speedMs, SantosConstants::minSpeedMs, SantosConstants::maxSpeedMs);
-        const auto safeReleaseMs = std::clamp (p.releaseMs, SantosConstants::minReleaseMs, SantosConstants::maxReleaseMs);
-
-        const auto riderAlpha =
-            movingTowardUnity ? timeConstantAlpha (safeReleaseMs)
-                              : timeConstantAlpha (safeSpeedMs);
-
+        // Attack = time constant while lowering gain (input louder than
+        // target, correcting a loud passage down). Release = time constant
+        // while raising gain back up (input quieter than target). This
+        // mirrors standard compressor terminology, transposed to a rider
+        // where "gain reduction" and "gain recovery" can both be active.
+        const auto loweringGain = targetRiderGain < currentRiderGain;
+        const auto timeMs = loweringGain ? std::clamp (p.attackMs, 2.0f, 250.0f)
+                                          : std::clamp (p.releaseMs, 2.0f, 250.0f);
+        const auto riderAlpha = timeConstantAlpha (timeMs);
         currentRiderGain += riderAlpha * (targetRiderGain - currentRiderGain);
 
-        const auto peakThresholdDb = std::clamp (p.peakThresholdDb, SantosConstants::minPeakThresholdDb, SantosConstants::maxPeakThresholdDb);
-        const auto predictedPeakDb = peakEnvelopeDb + gainToDb (currentRiderGain);
+        const auto wantedOutputGain = dbToGain (std::clamp (p.outputDb, -12.0f, 12.0f));
+        const auto outputAlpha = timeConstantAlpha (30.0f);
+        currentOutputGain += outputAlpha * (wantedOutputGain - currentOutputGain);
 
-        if (intensity <= 0.0f)
-        {
-            peakReductionDb = 0.0f;
-        }
-        else if (predictedPeakDb > peakThresholdDb)
-            peakReductionDb = std::clamp (peakThresholdDb - predictedPeakDb, -SantosConstants::maxPeakReductionDb, 0.0f) * intensity;
-        else
-            peakReductionDb = 0.0f;
+        // Push the live samples into the lookahead line, then read back
+        // whatever arrived `lookaheadMs` ago and apply today's gain to
+        // that instead of to the sample that produced it.
+        lookaheadLine.push (left, numChannels > 1 ? right : left);
+        const auto lookaheadSamples = lookaheadLine.millisecondsToSamples (p.lookaheadMs);
+        const auto delayed = lookaheadLine.readDelayed (lookaheadSamples);
 
-        const auto targetPeakGain = dbToGain (peakReductionDb);
-        const bool needsPeakReduction = targetPeakGain < currentPeakGain;
+        const auto totalGain = currentRiderGain * currentOutputGain;
+        auto outLeft = delayed.first * totalGain;
+        auto outRight = numChannels > 1 ? delayed.second * totalGain : outLeft;
 
-        const auto currentPeakDb = gainToDb (currentPeakGain);
-        const auto appliedPeakReductionDb = std::max (0.0f, -currentPeakDb);
-        const auto peakReleaseDepth = std::clamp (appliedPeakReductionDb / SantosConstants::maxPeakReductionDb, 0.0f, 1.0f);
-        const auto adaptivePeakReleaseMs =
-            SantosConstants::peakReleaseFastMs + (SantosConstants::peakReleaseSlowMs - SantosConstants::peakReleaseFastMs) * peakReleaseDepth;
+        // Fast safety limiter on the way out: instant attack so a sudden
+        // transient can never exceed Ceiling, with a smoothed release so it
+        // doesn't pump audibly once the peak has passed.
+        applyCeilingLimiter (outLeft, outRight, p.ceilingDb);
 
-        const auto peakAlpha =
-            needsPeakReduction ? timeConstantAlpha (SantosConstants::peakAttackMs)
-                               : timeConstantAlpha (adaptivePeakReleaseMs);
-
-        currentPeakGain += peakAlpha * (targetPeakGain - currentPeakGain);
-
-        const auto wantedOutputGain = dbToGain (std::clamp (p.outputDb, SantosConstants::minOutputDb, SantosConstants::maxOutputDb));
-        currentOutputGain += timeConstantAlpha (SantosConstants::outputTrimSmoothingMs) * (wantedOutputGain - currentOutputGain);
-
-        const auto totalGain = currentRiderGain * currentPeakGain * currentOutputGain;
-
-        left *= totalGain;
-
-        if (numChannels > 1)
-            right *= totalGain;
-        else
-            right = left;
+        left = outLeft;
+        right = outRight;
 
         const auto outputRms = outputDetector.process (left, right, numChannels);
         const auto outputDb = gainToDb (outputRms);
 
         lastTelemetry.inputDb = inputDb;
-        lastTelemetry.riderDb = currentRiderDb;
-        lastTelemetry.peakDb = currentPeakDb;
+        lastTelemetry.riderDb = gainToDb (currentRiderGain);
         lastTelemetry.outputDb = outputDb;
-
-        riderActive = detectorActive || std::abs (lastTelemetry.riderDb) > 0.05f;
         lastTelemetry.riderActive = riderActive;
-
         return lastTelemetry;
     }
 
     Telemetry getTelemetry() const noexcept { return lastTelemetry; }
+
+    // Exposed so the processor can report accurate PDC latency to the host.
+    int lookaheadSamplesFor (float lookaheadMs) const noexcept
+    {
+        return lookaheadLine.millisecondsToSamples (lookaheadMs);
+    }
 
     static float dbToGain (float db) noexcept
     {
@@ -351,7 +193,6 @@ private:
             filled = 0;
             windowSamples = 1;
             sumSquares = 0.0;
-            pendingWindowSamples = -1;
         }
 
         void setWindowMs (float ms)
@@ -360,22 +201,18 @@ private:
                 static_cast<int> (std::round (sampleRate * static_cast<double> (ms) * 0.001)),
                 1, maxSamples);
 
-            if (newWindow == windowSamples && newWindow == pendingWindowSamples)
+            if (newWindow == windowSamples)
                 return;
 
-            pendingWindowSamples = newWindow;
+            windowSamples = newWindow;
+            recomputeSum();
         }
 
         float process (float left, float right, int channels)
         {
-            if (pendingWindowSamples >= 0 && pendingWindowSamples != windowSamples)
-            {
-                windowSamples = pendingWindowSamples;
-                pendingWindowSamples = -1;
-                recomputeSum();
-            }
-
-            const auto square = channels > 1 ? 0.5f * (left * left + right * right) : left * left;
+            const auto square = channels > 1
+                ? 0.5f * (left * left + right * right)
+                : left * left;
 
             if (filled >= windowSamples)
             {
@@ -389,12 +226,10 @@ private:
 
             history[static_cast<std::size_t> (writeIndex)] = square;
             sumSquares += static_cast<double> (square);
-            sumSquares = denormalize(sumSquares);
             writeIndex = (writeIndex + 1) % maxSamples;
 
             const auto denominator = std::max (1, std::min (filled, windowSamples));
-            const auto rms = std::sqrt (static_cast<float> (std::max (0.0, sumSquares) / denominator));
-            return denormalize(rms);
+            return std::sqrt (static_cast<float> (std::max (0.0, sumSquares) / denominator));
         }
 
     private:
@@ -412,11 +247,60 @@ private:
         double sampleRate = 48000.0;
         int maxSamples = 1;
         int windowSamples = 1;
-        int pendingWindowSamples = -1;
         int writeIndex = 0;
         int filled = 0;
         double sumSquares = 0.0;
         std::vector<float> history;
+    };
+
+    // Small stereo circular buffer used for the lookahead delay. Detection
+    // reads the signal before it goes in; the gain stage reads it back out
+    // `lookaheadMs` later.
+    class LookaheadLine
+    {
+    public:
+        void prepare (double sr, float maxMs)
+        {
+            sampleRate = std::max (1.0, sr);
+            maxSamples = std::max (1, static_cast<int> (std::ceil (sampleRate * static_cast<double> (maxMs) * 0.001)));
+            bufferL.assign (static_cast<std::size_t> (maxSamples), 0.0f);
+            bufferR.assign (static_cast<std::size_t> (maxSamples), 0.0f);
+            reset();
+        }
+
+        void reset()
+        {
+            std::fill (bufferL.begin(), bufferL.end(), 0.0f);
+            std::fill (bufferR.begin(), bufferR.end(), 0.0f);
+            writeIndex = 0;
+        }
+
+        int millisecondsToSamples (float ms) const noexcept
+        {
+            const auto maxMsAllowed = static_cast<float> (maxSamples - 1) * 1000.0f / static_cast<float> (sampleRate);
+            const auto clampedMs = std::clamp (ms, 0.0f, maxMsAllowed);
+            return std::clamp (static_cast<int> (std::round (sampleRate * static_cast<double> (clampedMs) * 0.001)), 0, maxSamples - 1);
+        }
+
+        void push (float l, float r)
+        {
+            bufferL[static_cast<std::size_t> (writeIndex)] = l;
+            bufferR[static_cast<std::size_t> (writeIndex)] = r;
+            writeIndex = (writeIndex + 1) % maxSamples;
+        }
+
+        std::pair<float, float> readDelayed (int delaySamples) const
+        {
+            const auto clampedDelay = std::clamp (delaySamples, 0, maxSamples - 1);
+            const auto readIndex = (writeIndex - 1 - clampedDelay + maxSamples) % maxSamples;
+            return { bufferL[static_cast<std::size_t> (readIndex)], bufferR[static_cast<std::size_t> (readIndex)] };
+        }
+
+    private:
+        double sampleRate = 48000.0;
+        int maxSamples = 1;
+        int writeIndex = 0;
+        std::vector<float> bufferL, bufferR;
     };
 
     float timeConstantAlpha (float ms) const noexcept
@@ -425,6 +309,34 @@ private:
         return static_cast<float> (1.0 - std::exp (-1.0 / (seconds * sampleRate)));
     }
 
+    void applyCeilingLimiter (float& outLeft, float& outRight, float ceilingDb) noexcept
+    {
+        const auto ceilingLinear = dbToGain (ceilingDb);
+        const auto peak = std::max (std::abs (outLeft), std::abs (outRight));
+        const auto instantNeeded = (peak > ceilingLinear && peak > 1.0e-8f) ? (ceilingLinear / peak) : 1.0f;
+
+        if (instantNeeded < limiterGain)
+        {
+            // Instant attack: clamp down immediately so this sample never
+            // exceeds the ceiling, however hard it hits.
+            limiterGain = instantNeeded;
+        }
+        else
+        {
+            // Smoothed release back toward whatever headroom is currently
+            // needed (1.0 once nothing is being limited).
+            const auto releaseAlpha = timeConstantAlpha (limiterReleaseMs);
+            limiterGain += releaseAlpha * (instantNeeded - limiterGain);
+        }
+
+        limiterGain = std::clamp (limiterGain, 0.0f, 1.0f);
+        outLeft *= limiterGain;
+        outRight *= limiterGain;
+    }
+
+    static constexpr float gateHysteresisDb = 3.0f;
+    static constexpr float limiterReleaseMs = 60.0f;
+
     double sampleRate = 48000.0;
     int numChannels = 2;
     int controlPeriodSamples = 200;
@@ -432,18 +344,12 @@ private:
     float targetRiderGain = 1.0f;
     float currentRiderGain = 1.0f;
     float currentOutputGain = 1.0f;
+    float limiterGain = 1.0f;
+    bool gateOpen = false;
     bool riderActive = false;
-    float latestRequestedCorrectionDb = 0.0f;
-    float heldCorrectionDb = 0.0f;
-    int holdSamplesRemaining = 0;
-    bool holdActive = false;
-    bool detectorActive = false;
-    int gateCloseSamplesRemaining = 0;
-    float peakEnvelopeDb = -100.0f;
-    float peakReductionDb = 0.0f;
-    float currentPeakGain = 1.0f;
-    SlidingRms inputFastDetector;
-    SlidingRms inputSlowDetector;
+    SlidingRms inputDetector;
     SlidingRms outputDetector;
+    LookaheadLine lookaheadLine;
     Telemetry lastTelemetry;
 };
+DSP: lookahead, limiter, attack/release, gate hysteresis
