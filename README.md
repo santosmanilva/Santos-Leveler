@@ -1,9 +1,9 @@
-# Santos Leveler v1.0.2
+# Santos Leveler v1.0.3
 
 **Voice Auto Level Rider · VST3 · Windows x64 · Open Source**
 
 [![Build Windows VST3](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml/badge.svg)](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml)
-![Version](https://img.shields.io/badge/version-1.0.2-blue)
+![Version](https://img.shields.io/badge/version-1.0.3-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-informational)
 ![Format](https://img.shields.io/badge/format-VST3-orange)
 ![JUCE](https://img.shields.io/badge/JUCE-8.0.12-4c8bf5)
@@ -14,15 +14,15 @@
 
 ## Descarga y manuales
 
-**[⬇ Descargar Santos Leveler v1.0.2 — Windows x64 VST3](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.2/Santos-Leveler-v1.0.2-Windows-x64-VST3.zip)**
+**[⬇ Descargar Santos Leveler v1.0.3 — Windows x64 VST3](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.3/Santos-Leveler-v1.0.3-Windows-x64-VST3.zip)**
 
 Última versión estable · Windows 10/11 x64 · VST3
 
 - **[Manual de usuario — Español (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-Manual-Usuario-ES.pdf)**
 - **[User Manual — English (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-User-Manual-EN.pdf)**
-- [Ver la Release v1.0.2](https://github.com/santosmanilva/Santos-Leveler/releases/tag/v1.0.2)
+- [Ver la Release v1.0.3](https://github.com/santosmanilva/Santos-Leveler/releases/tag/v1.0.3)
 
-> Los manuales publicados para v1.0.0 siguen siendo válidos para v1.0.2. Las versiones 1.0.1 y 1.0.2 son actualizaciones de mantenimiento y no modifican los controles ni los valores de usuario documentados.
+> Los manuales publicados para v1.0.0 describen la interfaz anterior. En v1.0.3 los controles y los valores por defecto son los mismos, pero cambian el aspecto y la disposición de la interfaz, y el compresor y el limitador suenan distinto. Consulta el [CHANGELOG](CHANGELOG.md) antes de actualizar.
 
 ![Santos Leveler](docs/santos-leveler-ui.png)
 
@@ -47,8 +47,8 @@ Más información: [HISTORY.md](HISTORY.md).
 - Efecto de audio para pistas mono y estéreo
 - Procesamiento estéreo enlazado
 - Interfaz redimensionable
-- Tamaño inicial: **1310 × 640**
-- Tamaño máximo: **2625 × 1280**
+- Tamaño inicial: **1310 × 640** (mínimo 655 × 320, máximo 2620 × 1280, proporción fija)
+- Latencia: Lookahead + 2 ms del True Peak Limiter, informada al DAW y visible en el plugin
 - Sin versión Standalone
 
 ## Características principales
@@ -61,13 +61,13 @@ Más información: [HISTORY.md](HISTORY.md).
 - **Down Strength / Up Strength**.
 - **Intensity** global para Rider y Peak 2.
 - **Peak 2** con release adaptativo.
-- Módulo **Dynamics** con compresor de voz feed-forward, estéreo enlazado y soft knee.
+- Módulo **Compressor** de voz feed-forward con soft knee y enlace estéreo por el canal más fuerte.
 - **True Peak Limiter** con 2 ms de lookahead, detección por sobremuestreo 8x, release de 120 ms y Ceiling ajustable de -9 a -1 dBTP.
-- Medidores de pico para Input, Leveler Out y Final Out.
+- Dos **VU analógicos** (Input y Leveler Out) y un panel **Output** con pico, true peak y reducción de ganancia del compresor y del limitador.
 - Medición **True Peak dBTP** y **LUFS-M / LUFS-S / LUFS-I**.
-- Gráfica **Live Response** con INPUT, RIDER, PEAK y LEVELER OUT activables individualmente.
+- Gráfica **Live Response** con un panel de niveles (Input y Output, con las líneas de Target y Peak) y un carril de ganancia en dB (Rider y reducción de Peak); las cuatro trazas se activan individualmente.
 - Memorias **A/B**.
-- Presets de fábrica y presets de usuario `.slpreset`.
+- Presets de fábrica y presets de usuario `.slpreset`, con navegador de flechas que muestra «Custom» cuando los parámetros no coinciden con ningún preset de fábrica.
 - **Bypass alineado en latencia**.
 
 ## Cadena de señal
@@ -95,7 +95,7 @@ Peak / True Peak / LUFS
 OUTPUT
 ```
 
-## Parámetros Default v1.0.2
+## Parámetros Default v1.0.3
 
 | Parámetro | Default |
 |---|---:|
@@ -134,11 +134,12 @@ Documentos\Santos Leveler Presets
 
 ## Medición
 
-- **INPUT:** pico dBFS
-- **LEVELER OUT:** pico dBFS antes de Dynamics
-- **FINAL OUT:** pico dBFS después de compresor, True Peak y bypass final
-- **TRUE PEAK:** dBTP
-- **LOUDNESS:** LUFS-M, LUFS-S y LUFS-I
+- **INPUT (VU):** pico dBFS
+- **LEVELER OUT (VU):** pico dBFS antes del compresor
+- **OUTPUT · Peak:** pico dBFS después de compresor, True Peak y bypass final
+- **OUTPUT · True peak:** dBTP
+- **OUTPUT · Compressor / Limiter:** reducción de ganancia en dB
+- **OUTPUT · Loudness:** LUFS-M, LUFS-S y LUFS-I (botón Reset para reiniciar el integrado y el true peak)
 
 La medición de loudness se basa en algoritmos de **ITU-R BS.1770-5** y conceptos de EBU R128/Tech 3341. Santos Leveler no se presenta como equipo de medida certificado.
 
