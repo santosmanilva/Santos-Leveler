@@ -191,4 +191,5 @@ Las versiones modificadas deben identificarse claramente como tales y no deben p
 
 **José Antonio Santos Santos**  
 GitHub: [santosmanilva/Santos-Leveler](https://github.com/santosmanilva/Santos-Leveler)  
-Errores y propuestas: [GitHub Issues](https://github.com/santosmanilva/Santos-Leveler/issues)
+Errores y propuestas: [GitHub Issues](https://github.com/santosmanilva/Santos-Leveler/issues)  
+Cómo colaborar: [CONTRIBUTING.md](CONTRIBUTING.md) · Seguridad: [SECURITY.md](SECURITY.md)

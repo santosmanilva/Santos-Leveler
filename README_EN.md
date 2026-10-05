@@ -191,4 +191,5 @@ Modified versions should be clearly identified as modified and must not be prese
 
 **José Antonio Santos Santos**  
 GitHub: [santosmanilva/Santos-Leveler](https://github.com/santosmanilva/Santos-Leveler)  
-Bug reports and feature proposals: [GitHub Issues](https://github.com/santosmanilva/Santos-Leveler/issues)
+Bug reports and feature proposals: [GitHub Issues](https://github.com/santosmanilva/Santos-Leveler/issues)  
+How to contribute: [CONTRIBUTING.md](CONTRIBUTING.md) · Security: [SECURITY.md](SECURITY.md)
