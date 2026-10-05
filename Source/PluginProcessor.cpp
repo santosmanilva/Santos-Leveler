@@ -209,12 +209,12 @@ void SantosLevelerAudioProcessor::prepareToPlay(double sampleRate, int)
 
     const auto bypassed = apvts.getRawParameterValue(paramBypass)->load() >= 0.5f;
     bypassMix = bypassed ? 1.0f : 0.0f;
-    const auto bypassSmoothingSeconds = 0.010;
+    const auto bypassSmoothingSeconds = static_cast<double> (SantosConstants::bypassCrossfadeSeconds);
     bypassSmoothingAlpha = static_cast<float> (1.0 - std::exp(-1.0 / (bypassSmoothingSeconds * std::max(1.0, sampleRate))));
 
     history.clear();
     historyCounter = 0;
-    historyPeriodSamples = std::max(1, static_cast<int> (std::round(sampleRate / 60.0)));
+    historyPeriodSamples = std::max(1, static_cast<int> (std::round(sampleRate / static_cast<double> (SantosConstants::historyPushRateHz))));
     inputMeterDb.store(-100.0f, std::memory_order_relaxed);
     outputMeterDb.store(-100.0f, std::memory_order_relaxed);
     compressorReductionDb.store(0.0f, std::memory_order_relaxed);

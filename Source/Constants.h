@@ -47,20 +47,11 @@ namespace SantosConstants
     // History push rate (Hz)
     constexpr float historyPushRateHz = 60.0f;
 
-    // Loudness meter
-    constexpr float loudnessAbsoluteGateDb = -70.0f;   // Absolute gate for integrated loudness
-    constexpr float loudnessRelativeGateOffsetDb = -10.0f; // Relative gate offset from mean
-    constexpr float loudnessIntegratedUpdateIntervalSec = 1.0f; // Update integrated LUFS every 1 second
-
     // Parameter bounds
-    constexpr float minTargetDb = -36.0f;
-    constexpr float maxTargetDb = -6.0f;
     constexpr float minGateDb = -70.0f;
     constexpr float maxGateDb = -25.0f;
     constexpr float minSpeedMs = 2.0f;
     constexpr float maxSpeedMs = 250.0f;
-    constexpr float minDetectMs = 1.0f;
-    constexpr float maxDetectMs = 100.0f;
     constexpr float minLookaheadMs = 0.0f;
     constexpr float maxLookaheadMs = 100.0f;
     constexpr float minHoldMs = 0.0f;
