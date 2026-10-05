@@ -32,26 +32,6 @@ static void runConstantSignal (SantosLevelerEngine& engine,
     }
 }
 
-static void runSignalBlock (SantosLevelerEngine& engine,
-                            SantosLevelerEngine::Parameters params,
-                            const std::vector<float>& leftIn,
-                            const std::vector<float>& rightIn,
-                            std::vector<float>& leftOut,
-                            std::vector<float>& rightOut)
-{
-    const int n = std::min(leftIn.size(), rightIn.size());
-    leftOut.resize(n);
-    rightOut.resize(n);
-    for (int i = 0; i < n; ++i)
-    {
-        float l = leftIn[i];
-        float r = rightIn[i];
-        engine.processSample (l, r, params);
-        leftOut[i] = l;
-        rightOut[i] = r;
-    }
-}
-
 // Test step response (attack/release)
 static void testStepResponse()
 {
@@ -71,8 +51,6 @@ static void testStepResponse()
 
     const float inSilence = SantosLevelerEngine::dbToGain(-100.0f);
     const float inSignal = SantosLevelerEngine::dbToGain(-32.0f);
-    float y = 0.0f;
-
     // Run silence first to establish baseline
     for (int i = 0; i < static_cast<int>(sr * 0.1); ++i)
     {
