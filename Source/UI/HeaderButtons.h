@@ -5,37 +5,77 @@
 
 namespace SantosUI
 {
-// "Presets" drop-down: factory presets plus save / load of .slpreset files.
-class PresetButton final : public juce::Button
+// Preset navigator: "<  Default  >". The arrows step through the factory presets, the name
+// opens the menu (factory presets plus save / load of .slpreset files).
+class PresetNavigator final : public juce::Component
 {
 public:
-    explicit PresetButton (SantosLevelerAudioProcessor& p) : juce::Button ("Presets"), processor (p)
+    explicit PresetNavigator (SantosLevelerAudioProcessor& p) : processor (p)
     {
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
-        onClick = [this] { showMenu(); };
     }
 
-    void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+    void paint (juce::Graphics& g) override
     {
-        auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (down ? colour::track : (highlighted ? colour::cardHigh.brighter (0.12f) : colour::cardHigh));
-        g.fillRoundedRectangle (bounds, 6.0f);
-        g.setColour (colour::edge);
-        g.drawRoundedRectangle (bounds, 6.0f, 1.0f);
+        const auto b = getLocalBounds().toFloat();
+        g.setColour (colour::well);
+        g.fillRoundedRectangle (b, 8.0f);
+        g.setColour (colour::wellEdge.darker (0.2f));
+        g.drawRoundedRectangle (b.reduced (0.5f), 8.0f, 1.0f);
 
-        g.setColour (highlighted ? colour::text : colour::textDim);
-        g.setFont (font (11.5f, true).withExtraKerningFactor (0.08f));
-        g.drawText ("PRESETS", bounds.withTrimmedRight (22.0f).withTrimmedLeft (4.0f), juce::Justification::centred, false);
+        const auto arrowColour = [&] (bool hot) { return hot ? colour::ink : colour::dim; };
+        juce::Path left, right;
+        const auto cy = b.getCentreY();
+        left.startNewSubPath (b.getX() + 26.0f, cy - 6.0f);
+        left.lineTo (b.getX() + 18.0f, cy);
+        left.lineTo (b.getX() + 26.0f, cy + 6.0f);
+        right.startNewSubPath (b.getRight() - 26.0f, cy - 6.0f);
+        right.lineTo (b.getRight() - 18.0f, cy);
+        right.lineTo (b.getRight() - 26.0f, cy + 6.0f);
+        g.setColour (arrowColour (hover == Zone::previous));
+        g.strokePath (left, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (arrowColour (hover == Zone::next));
+        g.strokePath (right, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        juce::Path chevron;
-        const auto cx = bounds.getRight() - 15.0f, cy = bounds.getCentreY();
-        chevron.startNewSubPath (cx - 4.0f, cy - 2.0f);
-        chevron.lineTo (cx, cy + 2.0f);
-        chevron.lineTo (cx + 4.0f, cy - 2.0f);
-        g.strokePath (chevron, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (colour::wellEdge.darker (0.2f));
+        g.fillRect (b.getX() + 46.0f, b.getY() + 8.0f, 1.0f, b.getHeight() - 16.0f);
+        g.fillRect (b.getRight() - 46.0f, b.getY() + 8.0f, 1.0f, b.getHeight() - 16.0f);
+
+        g.setColour (hover == Zone::menu ? juce::Colours::white : colour::ink);
+        g.setFont (font (14.0f, true));
+        g.drawText (displayName(), b.withTrimmedLeft (48.0f).withTrimmedRight (48.0f), juce::Justification::centred, true);
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override { setHover (zoneAt (e.position)); }
+    void mouseExit (const juce::MouseEvent&) override { setHover (Zone::none); }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (! getLocalBounds().contains (e.getPosition()))
+            return;
+
+        switch (zoneAt (e.position))
+        {
+            case Zone::previous: step (-1); break;
+            case Zone::next:     step (+1); break;
+            case Zone::menu:     showMenu(); break;
+            case Zone::none:     break;
+        }
+    }
+
+    void refresh()
+    {
+        const auto name = displayName();
+        if (name != lastShown)
+        {
+            lastShown = name;
+            repaint();
+        }
     }
 
 private:
+    enum class Zone { none, previous, menu, next };
+
     struct Preset
     {
         const char* name;
@@ -69,18 +109,65 @@ private:
         return folder;
     }
 
+    Zone zoneAt (juce::Point<float> p) const
+    {
+        if (p.x < 46.0f) return Zone::previous;
+        if (p.x > static_cast<float> (getWidth()) - 46.0f) return Zone::next;
+        return Zone::menu;
+    }
+
+    void setHover (Zone zone)
+    {
+        if (zone != hover)
+        {
+            hover = zone;
+            repaint();
+        }
+    }
+
+    // Index of the factory preset that matches the current parameters, or -1.
+    int matchingPreset() const
+    {
+        const auto& list = presets();
+        for (std::size_t p = 0; p < list.size(); ++p)
+        {
+            auto matches = true;
+            for (std::size_t i = 0; i < parameterIds.size() && matches; ++i)
+                if (auto* value = processor.apvts.getRawParameterValue (parameterIds[i]))
+                    matches = std::abs (value->load() - list[p].values[i]) < 0.051f;
+            if (matches)
+                return static_cast<int> (p);
+        }
+        return -1;
+    }
+
+    juce::String displayName() const
+    {
+        const auto index = matchingPreset();
+        return index >= 0 ? juce::String (presets()[static_cast<std::size_t> (index)].name) : juce::String ("Custom");
+    }
+
+    void step (int direction)
+    {
+        const auto count = static_cast<int> (presets().size());
+        const auto current = matchingPreset();
+        const auto next = current < 0 ? (direction > 0 ? 0 : count - 1) : (current + direction + count) % count;
+        applyPreset (next);
+    }
+
     void showMenu()
     {
         juce::PopupMenu menu;
         const auto& list = presets();
+        const auto current = matchingPreset();
         for (int i = 0; i < static_cast<int> (list.size()); ++i)
-            menu.addItem (i + 1, list[static_cast<std::size_t> (i)].name);
+            menu.addItem (i + 1, list[static_cast<std::size_t> (i)].name, true, i == current);
 
         menu.addSeparator();
         menu.addItem (100, "Save Preset...");
         menu.addItem (101, "Load Preset...");
 
-        auto safeThis = juce::Component::SafePointer<PresetButton> (this);
+        auto safeThis = juce::Component::SafePointer<PresetNavigator> (this);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
                             [safeThis] (int result)
                             {
@@ -122,7 +209,7 @@ private:
         fileChooser = std::make_unique<juce::FileChooser> ("Save Santos Leveler preset", initial, "*.slpreset",
                                                            true, false, getTopLevelComponent());
 
-        auto safeThis = juce::Component::SafePointer<PresetButton> (this);
+        auto safeThis = juce::Component::SafePointer<PresetNavigator> (this);
         const auto flags = juce::FileBrowserComponent::saveMode
                          | juce::FileBrowserComponent::canSelectFiles
                          | juce::FileBrowserComponent::warnAboutOverwriting;
@@ -160,7 +247,7 @@ private:
         fileChooser = std::make_unique<juce::FileChooser> ("Load Santos Leveler preset", presetFolder(), "*.slpreset",
                                                            true, false, getTopLevelComponent());
 
-        auto safeThis = juce::Component::SafePointer<PresetButton> (this);
+        auto safeThis = juce::Component::SafePointer<PresetNavigator> (this);
         const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
         fileChooser->launchAsync (flags, [safeThis] (const juce::FileChooser& chooser)
         {
@@ -209,9 +296,11 @@ private:
 
     SantosLevelerAudioProcessor& processor;
     std::unique_ptr<juce::FileChooser> fileChooser;
+    Zone hover = Zone::none;
+    juce::String lastShown;
 };
 
-// Small round "i" button that opens the about box.
+// Round "i" button that opens the about box.
 class AboutButton final : public juce::Button
 {
 public:
@@ -224,13 +313,15 @@ public:
 
     void paintButton (juce::Graphics& g, bool highlighted, bool) override
     {
-        auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (highlighted ? colour::cardHigh.brighter (0.12f) : colour::cardHigh);
+        const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (juce::Colour (0xff0b0b0c));
+        g.fillEllipse (bounds.expanded (1.0f));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2a2a2d), 0.0f, bounds.getY(), juce::Colour (0xff111113), 0.0f, bounds.getBottom(), false));
         g.fillEllipse (bounds);
-        g.setColour (colour::edge);
+        g.setColour (colour::bevel);
         g.drawEllipse (bounds, 1.0f);
-        g.setColour (highlighted ? colour::text : colour::textDim);
-        g.setFont (font (13.0f, true));
+        g.setColour (highlighted ? colour::ink : colour::dim);
+        g.setFont (font (14.0f, true));
         g.drawText ("i", bounds, juce::Justification::centred, false);
     }
 
@@ -260,5 +351,37 @@ private:
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Santos Leveler",
                                                 message, "CLOSE", getTopLevelComponent());
     }
+};
+
+// "RIDING" lamp and the latency read-out in the header.
+class HeaderStatus final : public juce::Component
+{
+public:
+    enum class Mode { rider, latency };
+
+    HeaderStatus (SantosLevelerAudioProcessor& p, Mode m) : processor (p), mode (m) {}
+
+    void paint (juce::Graphics& g) override
+    {
+        if (mode == Mode::rider)
+        {
+            const auto riding = processor.getRiderActive();
+            drawLed (g, { 10.0f, 20.0f }, 6.0f, riding, colour::accent);
+            drawCaption (g, riding ? "Riding" : "Idle", { 24.0f, 12.0f, 80.0f, 16.0f }, juce::Justification::centredLeft,
+                         riding ? colour::accent : colour::faint, 10.0f);
+            return;
+        }
+
+        const auto sampleRate = processor.getSampleRate();
+        const auto latencyMs = sampleRate > 0.0 ? 1000.0 * processor.getLatencySamples() / sampleRate : 0.0;
+        drawCaption (g, "Latency", { 0.0f, 4.0f, 80.0f, 12.0f }, juce::Justification::centredLeft, colour::dim, 8.0f);
+        g.setColour (colour::ink);
+        g.setFont (font (12.0f, true));
+        g.drawText (juce::String (juce::roundToInt (latencyMs)) + " ms", juce::Rectangle<float> (0.0f, 16.0f, 80.0f, 16.0f), juce::Justification::centredLeft, false);
+    }
+
+private:
+    SantosLevelerAudioProcessor& processor;
+    Mode mode;
 };
 } // namespace SantosUI
