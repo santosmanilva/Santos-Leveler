@@ -186,19 +186,23 @@ public:
                                                   static_cast<float> (width), static_cast<float> (height));
         const auto cy = area.getCentreY();
         const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
-        const auto slot = juce::Rectangle<float> (minSliderPos, cy - 3.5f, maxSliderPos - minSliderPos, 7.0f);
+        // For a single-value slider JUCE passes the positions of the (unused) range thumbs as
+        // minSliderPos / maxSliderPos, so the slot is taken from the slider bounds instead.
+        const auto slot = juce::Rectangle<float> (area.getX(), cy - 3.5f, area.getWidth(), 7.0f);
+        const auto travelStart = area.getX() + static_cast<float> (getSliderThumbRadius (slider));
+        const auto travelEnd = area.getRight() - static_cast<float> (getSliderThumbRadius (slider));
 
         g.setColour (juce::Colour (0xff030304));
         g.fillRoundedRectangle (slot, 3.5f);
-        g.setColour (juce::Colour (0xff35353a));
+        g.setColour (juce::Colour (0xff3a3a40));
         g.drawRoundedRectangle (slot.reduced (0.5f), 3.5f, 1.0f);
 
         // Fill from the natural origin: zero for bipolar ranges, the 0 dB end for negative-only ranges.
-        auto origin = slot.getX();
+        auto origin = travelStart;
         if (slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0)
-            origin = minSliderPos + static_cast<float> (slider.valueToProportionOfLength (0.0)) * (maxSliderPos - minSliderPos);
+            origin = travelStart + static_cast<float> (slider.valueToProportionOfLength (0.0)) * (travelEnd - travelStart);
         else if (slider.getMaximum() <= 0.0)
-            origin = slot.getRight();
+            origin = travelEnd;
 
         const auto from = juce::jmin (origin, sliderPos), to = juce::jmax (origin, sliderPos);
         g.setColour (accent);
