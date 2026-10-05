@@ -481,5 +481,13 @@ void SantosLevelerAudioProcessor::setStateInformation (const void* data, int siz
     }
 }
 
+// Exposing the plugin's own Bypass to the host means the DAW bypass button uses
+// the latency-aligned, crossfaded bypass. Without it JUCE's default host bypass
+// passes the input through without the lookahead delay, shifting the audio in time.
+juce::AudioProcessorParameter* SantosLevelerAudioProcessor::getBypassParameter() const
+{
+    return apvts.getParameter (paramBypass);
+}
+
 juce::AudioProcessorEditor* SantosLevelerAudioProcessor::createEditor() { return new SantosLevelerAudioProcessorEditor (*this); }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new SantosLevelerAudioProcessor(); }

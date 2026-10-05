@@ -56,6 +56,7 @@ public:
         outputDetector.prepare (sampleRate, 100.0);
 
         controlPeriodSamples = std::max (1, static_cast<int> (std::round (sampleRate / SantosConstants::controlLoopRateHz)));
+        peakEnvelopeReleaseAlpha = timeConstantAlpha (SantosConstants::peakEnvelopeReleaseMs);
         reset();
     }
 
@@ -76,6 +77,7 @@ public:
         gateCloseSamplesRemaining = 0;
 
         peakEnvelopeDb = -100.0f;
+        peakHoldSamplesRemaining = 0;
         peakReductionDb = 0.0f;
         currentPeakGain = 1.0f;
         riderActive = false;
@@ -84,9 +86,12 @@ public:
 
     Telemetry processSample (float& left, float& right, const Parameters& p)
     {
+        // No lookahead delay on this path: the detector and audio are the same sample.
+        auto noLookahead = p;
+        noLookahead.lookaheadMs = 0.0f;
         const auto detectorLeft = left;
         const auto detectorRight = right;
-        return processSampleLookahead (detectorLeft, detectorRight, left, right, p);
+        return processSampleLookahead (detectorLeft, detectorRight, left, right, noLookahead);
     }
 
     Telemetry processSampleLookahead (float detectorLeft,
@@ -113,17 +118,32 @@ public:
         const auto controlInputDb = slowDb + detectorDeltaDb * fastWeight;
         const auto inputDb = controlInputDb;
 
+        // Peak 2 looks at the lookahead (undelayed) detector signal so the reduction
+        // is already in place when the peak reaches the delayed audio path. The
+        // envelope is held for the lookahead time, so a short isolated transient is
+        // still covered when it arrives at the output.
         const auto instantaneousPeak =
             numChannels > 1
-                ? std::max (std::abs (left), std::abs (right))
-                : std::abs (left);
+                ? std::max (std::abs (detectorLeft), std::abs (detectorRight))
+                : std::abs (detectorLeft);
 
         const auto instantaneousPeakDb = gainToDb (instantaneousPeak);
+        const auto lookaheadHoldSamples = static_cast<int> (std::round (
+            sampleRate * static_cast<double> (std::clamp (p.lookaheadMs, SantosConstants::minLookaheadMs, SantosConstants::maxLookaheadMs)) * 0.001));
 
-        if (instantaneousPeakDb > peakEnvelopeDb)
+        if (instantaneousPeakDb >= peakEnvelopeDb)
+        {
             peakEnvelopeDb = instantaneousPeakDb;
+            peakHoldSamplesRemaining = lookaheadHoldSamples;
+        }
+        else if (peakHoldSamplesRemaining > 0)
+        {
+            --peakHoldSamplesRemaining;
+        }
         else
-            peakEnvelopeDb += timeConstantAlpha (SantosConstants::peakEnvelopeReleaseMs) * (instantaneousPeakDb - peakEnvelopeDb);
+        {
+            peakEnvelopeDb += peakEnvelopeReleaseAlpha * (instantaneousPeakDb - peakEnvelopeDb);
+        }
 
         if (controlCountdown <= 0)
         {
@@ -308,9 +328,17 @@ public:
         const auto outputDb = gainToDb (outputRms);
 
         lastTelemetry.inputDb = inputDb;
+        lastTelemetry.fastDb = fastDb;
+        lastTelemetry.slowDb = slowDb;
+        lastTelemetry.controlDb = controlInputDb;
+        lastTelemetry.requestedRiderDb = latestRequestedCorrectionDb;
+        lastTelemetry.effectiveRiderDb = intensityScaledCorrectionDb;
         lastTelemetry.riderDb = currentRiderDb;
+        lastTelemetry.peakEnvelopeDb = peakEnvelopeDb;
+        lastTelemetry.peakReductionDb = peakReductionDb;
         lastTelemetry.peakDb = currentPeakDb;
         lastTelemetry.outputDb = outputDb;
+        lastTelemetry.gateActive = detectorActive;
 
         riderActive = detectorActive || std::abs (lastTelemetry.riderDb) > 0.05f;
         lastTelemetry.riderActive = riderActive;
@@ -440,6 +468,8 @@ private:
     bool detectorActive = false;
     int gateCloseSamplesRemaining = 0;
     float peakEnvelopeDb = -100.0f;
+    float peakEnvelopeReleaseAlpha = 1.0f;
+    int peakHoldSamplesRemaining = 0;
     float peakReductionDb = 0.0f;
     float currentPeakGain = 1.0f;
     SlidingRms inputFastDetector;
