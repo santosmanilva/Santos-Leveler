@@ -62,7 +62,7 @@ Más información: [HISTORY.md](HISTORY.md).
 - **Intensity** global para Rider y Peak 2.
 - **Peak 2** con release adaptativo.
 - Módulo **Dynamics** con compresor de voz feed-forward, estéreo enlazado y soft knee.
-- **True Peak Limiter** con 1 ms de lookahead, release de 120 ms y Ceiling ajustable de -9 a -1 dBTP.
+- **True Peak Limiter** con 2 ms de lookahead, detección por sobremuestreo 8x, release de 120 ms y Ceiling ajustable de -9 a -1 dBTP.
 - Medidores de pico para Input, Leveler Out y Final Out.
 - Medición **True Peak dBTP** y **LUFS-M / LUFS-S / LUFS-I**.
 - Gráfica **Live Response** con INPUT, RIDER, PEAK y LEVELER OUT activables individualmente.

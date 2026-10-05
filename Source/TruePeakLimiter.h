@@ -19,7 +19,9 @@ public:
         numChannels = std::clamp (newNumChannels, 1, 2);
 
         using namespace SantosConstants;
-        lookaheadSamples = std::max (1, static_cast<int> (std::round (sampleRate * (truePeakLookaheadMs * 0.001))));
+        // Never shorter than the detector delay plus a 16 sample ramp, even at very low sample rates.
+        lookaheadSamples = std::max (detectorDelaySamples + 16,
+                                     static_cast<int> (std::round (sampleRate * (truePeakLookaheadMs * 0.001))));
         delayBufferSize = lookaheadSamples + 1;
 
         wetDelayL.assign (static_cast<std::size_t> (delayBufferSize), 0.0f);
@@ -32,10 +34,11 @@ public:
 
         // Gain path: sliding minimum over the lookahead window, release, then a
         // moving average that turns the gain drop into a short ramp. The ramp is
-        // shorter than the lookahead by the FIR detector delay, so the full
+        // shorter than the lookahead by the detector delay, so the full
         // reduction is reached before the detected peak leaves the delay line.
         minWindowSize = lookaheadSamples + 1;
-        rampLength = std::max (1, lookaheadSamples - truePeakHoldExtraSamples);
+        rampLength = std::max (1, lookaheadSamples - detectorDelaySamples);
+        buildDetectorCoefficients();
         requiredGainHistory.assign (static_cast<std::size_t> (minWindowSize), 1.0f);
         rampHistory.assign (static_cast<std::size_t> (rampLength), 1.0f);
 
@@ -56,6 +59,7 @@ public:
     {
         for (auto& channel : detectorHistory)
             channel.fill (0.0f);
+        detectorWriteIndex = 0;
 
         std::fill (wetDelayL.begin(), wetDelayL.end(), 0.0f);
         std::fill (wetDelayR.begin(), wetDelayR.end(), 0.0f);
@@ -84,12 +88,11 @@ public:
                   float& delayedDryL,
                   float& delayedDryR) noexcept
     {
-        const auto truePeak = detectTruePeak (wetL, wetR);
-        latestTruePeakLinear = denormalize(truePeak);
-
-        // A 0.01 dB safety margin covers the tiny inter-sample change caused by
-        // the gain ramp itself.
+        // A 0.1 dB safety margin covers the inter-sample change caused by the gain
+        // ramp itself and the residual error of the interpolating detector.
         const auto currentCeilingLinear = ceilingLinear.load (std::memory_order_acquire) * ceilingSafetyFactor;
+        const auto truePeak = detectTruePeak (wetL, wetR, currentCeilingLinear);
+        latestTruePeakLinear = denormalize(truePeak);
         const auto requiredGain = truePeak > currentCeilingLinear
             ? std::clamp (currentCeilingLinear / std::max (truePeak, 1.0e-9f), 0.0f, 1.0f)
             : 1.0f;
@@ -167,55 +170,108 @@ private:
         return std::clamp (static_cast<float> (rampSum / static_cast<double> (rampLength)), 0.0f, 1.0f);
     }
 
-    float detectTruePeak (float left, float right) noexcept
+    static double besselI0 (double x) noexcept
     {
-        detectorHistory[0][static_cast<std::size_t> (detectorWriteIndex)] = left;
-        detectorHistory[1][static_cast<std::size_t> (detectorWriteIndex)] = right;
+        double sum = 1.0, term = 1.0;
+        for (int k = 1; k < 50; ++k)
+        {
+            const auto half = x / (2.0 * k);
+            term *= half * half;
+            sum += term;
+        }
+        return sum;
+    }
+
+    // 8x polyphase windowed-sinc (Kaiser) interpolator used only for peak detection.
+    // Phase p evaluates the signal p/8 of a sample after the sample that is
+    // detectorDelaySamples behind the newest one, so the detector sees the whole
+    // interval between two samples. The 4x / 12-tap filter of BS.1770 can miss
+    // 0.5 dB or more on noisy, high-frequency content such as sibilants.
+    void buildDetectorCoefficients() noexcept
+    {
+        constexpr double pi = 3.14159265358979323846;
+        constexpr double kaiserBeta = 8.0;
+        const auto beta0 = besselI0 (kaiserBeta);
+        lebesgueConstant = 0.0f;
+
+        for (int phase = 0; phase < detectorPhases; ++phase)
+        {
+            double absoluteSum = 0.0;
+            for (int tap = 0; tap < detectorTaps; ++tap)
+            {
+                const auto x = static_cast<double> (tap - detectorDelaySamples)
+                             + static_cast<double> (phase) / detectorPhases;
+                const auto sinc = std::abs (x) < 1.0e-12 ? 1.0 : std::sin (pi * x) / (pi * x);
+                const auto r = x / static_cast<double> (detectorDelaySamples);
+                const auto window = std::abs (r) >= 1.0 ? 0.0 : besselI0 (kaiserBeta * std::sqrt (1.0 - r * r)) / beta0;
+                const auto coefficient = sinc * window;
+                // Stored oldest-first, matching the contiguous layout of detectorHistory.
+                detectorCoefficients[static_cast<std::size_t> (phase)][static_cast<std::size_t> (detectorTaps - 1 - tap)] = static_cast<float> (coefficient);
+                absoluteSum += std::abs (coefficient);
+            }
+            lebesgueConstant = std::max (lebesgueConstant, static_cast<float> (absoluteSum));
+        }
+    }
+
+    float detectTruePeak (float left, float right, float ceilingToCheck) noexcept
+    {
+        // Each sample is written twice so the last detectorTaps samples are always one
+        // contiguous run (oldest first) starting at detectorWriteIndex + 1.
+        const auto write = static_cast<std::size_t> (detectorWriteIndex);
+        detectorHistory[0][write] = left;
+        detectorHistory[0][write + detectorTaps] = left;
+        detectorHistory[1][write] = right;
+        detectorHistory[1][write + detectorTaps] = right;
 
         float maximum = 0.0f;
 
         for (int channel = 0; channel < numChannels; ++channel)
         {
-            for (int phase = 0; phase < 4; ++phase)
+            const float* window = detectorHistory[static_cast<std::size_t> (channel)].data() + write + 1;
+
+            // |interpolated value| <= lebesgueConstant * (largest sample in the window),
+            // so a quiet window cannot reach the ceiling and the filter can be skipped.
+            float windowPeak = 0.0f;
+            for (int i = 0; i < detectorTaps; ++i)
+                windowPeak = std::max (windowPeak, std::abs (window[i]));
+
+            if (windowPeak * lebesgueConstant <= ceilingToCheck)
             {
-                float value = 0.0f;
-                auto historyIndex = detectorWriteIndex;
-
-                for (int tap = 0; tap < 12; ++tap)
-                {
-                    value += detectorHistory[static_cast<std::size_t> (channel)]
-                                            [static_cast<std::size_t> (historyIndex)]
-                             * SantosTruePeakCoefficients::values[static_cast<std::size_t> (tap)]
-                                           [static_cast<std::size_t> (phase)];
-
-                    if (--historyIndex < 0)
-                        historyIndex = 11;
-                }
-
-                maximum = std::max (maximum, std::abs (value));
+                maximum = std::max (maximum, windowPeak);
+                continue;
             }
 
-            // The four interpolation phases of the BS.1770 filter never land exactly
-            // on the original samples, so include the two samples the phases sit
-            // between. This keeps true peak >= sample peak; without it the reading
-            // could fall below the sample peak on high-frequency content.
-            const auto& channelHistory = detectorHistory[static_cast<std::size_t> (channel)];
-            const auto alignedA = (detectorWriteIndex - 5 + 12) % 12;
-            const auto alignedB = (detectorWriteIndex - 6 + 12) % 12;
-            maximum = std::max (maximum, std::abs (channelHistory[static_cast<std::size_t> (alignedA)]));
-            maximum = std::max (maximum, std::abs (channelHistory[static_cast<std::size_t> (alignedB)]));
+            // Phase 0 is the sample detectorDelaySamples behind the newest one.
+            maximum = std::max (maximum, std::abs (window[detectorTaps - 1 - detectorDelaySamples]));
+
+            for (int phase = 1; phase < detectorPhases; ++phase)
+            {
+                const float* coefficients = detectorCoefficients[static_cast<std::size_t> (phase)].data();
+                float accumulator[8] {};
+                for (int tap = 0; tap < detectorTaps; tap += 8)
+                    for (int lane = 0; lane < 8; ++lane)
+                        accumulator[lane] += window[tap + lane] * coefficients[tap + lane];
+
+                const auto value = ((accumulator[0] + accumulator[4]) + (accumulator[1] + accumulator[5]))
+                                 + ((accumulator[2] + accumulator[6]) + (accumulator[3] + accumulator[7]));
+                maximum = std::max (maximum, std::abs (value));
+            }
         }
 
-        if (++detectorWriteIndex >= 12)
-            detectorWriteIndex = 0;
-
+        detectorWriteIndex = (detectorWriteIndex + 1) & detectorMask;
         return maximum;
     }
 
     double sampleRate = 48000.0;
     int numChannels = 2;
 
-    std::array<std::array<float, 12>, 2> detectorHistory {};
+    static constexpr int detectorTaps = 64;
+    static constexpr int detectorMask = detectorTaps - 1;
+    static constexpr int detectorPhases = 8;
+    static constexpr int detectorDelaySamples = detectorTaps / 2;
+    std::array<std::array<float, 2 * detectorTaps>, 2> detectorHistory {};
+    std::array<std::array<float, detectorTaps>, detectorPhases> detectorCoefficients {};
+    float lebesgueConstant = 1.0f;
     int detectorWriteIndex = 0;
 
     std::vector<float> wetDelayL;
@@ -237,7 +293,7 @@ private:
     int rampWriteIndex = 0;
     double rampSum = 1.0;
     float releasedGain = 1.0f;
-    static constexpr float ceilingSafetyFactor = 0.998849f; // -0.01 dB
+    static constexpr float ceilingSafetyFactor = 0.988553f; // -0.1 dB
     float latestTruePeakLinear = 0.0f;
     std::atomic<float> ceilingDbTP { -1.0f };
     std::atomic<float> ceilingLinear { 0.891250938f };

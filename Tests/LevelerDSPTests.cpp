@@ -4,6 +4,7 @@
  #undef NDEBUG
 #endif
 #include <cassert>
+#include <cstdint>
 
 #include "../Source/HistoryBuffer.h"
 #include "../Source/LevelerEngine.h"
@@ -408,6 +409,36 @@ static void testCompressorMatchesControls()
     }
 }
 
+// Reference true-peak measurement, independent of the plugin: 16x windowed-sinc
+// interpolation over +-32 samples (the BS.1770 4x / 12-tap filter reads up to
+// 0.2 dB high near fs/4 and 0.5 dB low on noisy content, so it is not used as ground truth).
+static float exactTruePeakDb (const std::vector<float>& x, int skip)
+{
+    constexpr int oversample = 16, halfWidth = 32;
+    std::vector<double> h (static_cast<std::size_t> (2 * halfWidth * oversample + 1));
+    for (int i = 0; i < static_cast<int> (h.size()); ++i)
+    {
+        const auto t = (i - halfWidth * oversample) / static_cast<double> (oversample);
+        const auto sinc = t == 0.0 ? 1.0 : std::sin (testPi * t) / (testPi * t);
+        h[static_cast<std::size_t> (i)] = sinc * (0.5 + 0.5 * std::cos (testPi * t / halfWidth));
+    }
+
+    double best = 0.0;
+    for (int n = std::max (skip, halfWidth); n < static_cast<int> (x.size()) - halfWidth; ++n)
+        for (int phase = 0; phase < oversample; ++phase)
+        {
+            double value = 0.0;
+            for (int k = -halfWidth + 1; k <= halfWidth; ++k)
+            {
+                const auto index = static_cast<int> (std::lround ((static_cast<double> (phase) / oversample - k + halfWidth) * oversample));
+                value += x[static_cast<std::size_t> (n + k)] * h[static_cast<std::size_t> (index)];
+            }
+            best = std::max (best, std::abs (value));
+        }
+
+    return static_cast<float> (20.0 * std::log10 (std::max (best, 1.0e-9)));
+}
+
 // True Peak Limiter: output stays under the ceiling and the gain never jumps.
 static void testTruePeakLimiterRampAndCeiling()
 {
@@ -416,12 +447,11 @@ static void testTruePeakLimiterRampAndCeiling()
         SantosTruePeakLimiter limiter;
         limiter.prepare (sr, 2);
         limiter.setCeilingDbTP (-1.0f);
-        SantosLoudnessMeter meter;
-        meter.prepare (sr, 2);
 
         float previousGain = 1.0f;
         float largestDrop = 0.0f;
         const int total = static_cast<int> (sr * 1.0);
+        std::vector<float> output (static_cast<std::size_t> (total));
 
         for (int n = 0; n < total; ++n)
         {
@@ -430,17 +460,55 @@ static void testTruePeakLimiterRampAndCeiling()
             const auto x = amplitude * static_cast<float> (std::sin (2.0 * testPi * (sr / 4.0 + 11.0) * t + 0.7));
             float wl = 0.0f, wr = 0.0f, dl = 0.0f, dr = 0.0f;
             limiter.process (x, x, x, x, wl, wr, dl, dr);
-            meter.processSample (wl, wr);
+            output[static_cast<std::size_t> (n)] = wl;
 
             const auto gain = SantosLevelerEngine::dbToGain (limiter.getGainReductionDb());
             largestDrop = std::max (largestDrop, previousGain - gain);
             previousGain = gain;
         }
 
-        assert (meter.getMaxTruePeakDbTP() <= -1.0f + 0.001f);
+        assert (exactTruePeakDb (output, 2000) <= -1.0f + 0.001f);
         // Before the fix the gain dropped by up to ~0.5 (linear) in a single sample.
         assert (largestDrop < 0.05f);
     }
+}
+
+// Noisy high-frequency content (sibilants) is the worst case for true-peak detection:
+// the old 4x / 12-tap detector let it through up to ~0.5 dB above the ceiling.
+static void testTruePeakLimiterNoisyContent()
+{
+    std::uint32_t state = 12345u;
+    const auto nextGaussian = [&state]
+    {
+        float sum = 0.0f;
+        for (int i = 0; i < 12; ++i)
+        {
+            state = state * 1664525u + 1013904223u;
+            sum += static_cast<float> (state >> 8) / 16777216.0f;
+        }
+        return sum - 6.0f;
+    };
+
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+        for (const float sigma : { 0.3f, 0.5f })
+        {
+            SantosTruePeakLimiter limiter;
+            limiter.prepare (sr, 2);
+            limiter.setCeilingDbTP (-1.0f);
+
+            const int total = static_cast<int> (sr * 0.7);
+            std::vector<float> output (static_cast<std::size_t> (total));
+            for (int n = 0; n < total; ++n)
+            {
+                const auto x = sigma * nextGaussian();
+                float wl = 0.0f, wr = 0.0f, dl = 0.0f, dr = 0.0f;
+                limiter.process (x, x, x, x, wl, wr, dl, dr);
+                output[static_cast<std::size_t> (n)] = wl;
+            }
+
+            // Before the fix: +0.26 dBTP (1.3 dB over the ceiling) at sigma 0.5. White noise limited by 10 dB is far harsher than any voice.
+            assert (exactTruePeakDb (output, 4000) <= -1.0f + 0.1f);
+        }
 }
 
 // Integrated loudness: relative gate works and memory does not grow.
@@ -603,7 +671,7 @@ int main()
 
     SantosTruePeakLimiter limiter;
     limiter.prepare (sr, 2);
-    assert (limiter.getLatencySamples() == 48);
+    assert (limiter.getLatencySamples() == 96); // 2 ms at 48 kHz
 
     constexpr float hotSignal = 1.2f;
     constexpr float dryReference = 0.5f;
@@ -670,6 +738,7 @@ int main()
     testPeak2UsesLookahead();
     testCompressorMatchesControls();
     testTruePeakLimiterRampAndCeiling();
+    testTruePeakLimiterNoisyContent();
     testIntegratedRelativeGate();
     testHistoryBufferClearDoesNotBlock();
 

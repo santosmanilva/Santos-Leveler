@@ -38,8 +38,7 @@ namespace SantosConstants
     constexpr float compressorKneeDb = 6.0f;
 
     // True peak limiter
-    constexpr float truePeakLookaheadMs = 1.0f;     // 1 ms lookahead
-    constexpr int truePeakHoldExtraSamples = 6;   // Extra hold samples for FIR group delay
+    constexpr float truePeakLookaheadMs = 2.0f;     // 2 ms lookahead (covers the 32-sample detector delay at 44.1 kHz and up)
     constexpr float truePeakReleaseMs = 120.0f;     // Release time for true peak limiter
 
     // Bypass crossfade time (seconds)
