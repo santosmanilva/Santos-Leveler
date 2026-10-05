@@ -1,194 +1,69 @@
 # Santos Leveler v1.0.3
 
-**Voice Auto Level Rider · VST3 · Windows x64 · Open Source**
+## Español
 
-[![Build Windows VST3](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml/badge.svg)](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml)
-![Version](https://img.shields.io/badge/version-1.0.3-blue)
-![Platform](https://img.shields.io/badge/platform-Windows%20x64-informational)
-![Format](https://img.shields.io/badge/format-VST3-orange)
-![JUCE](https://img.shields.io/badge/JUCE-8.0.12-4c8bf5)
-![C++](https://img.shields.io/badge/C%2B%2B-17-00599C)
-![License](https://img.shields.io/badge/license-AGPL--3.0-brightgreen)
+Versión de mejora del procesado y de la interfaz. **Los presets existentes pueden sonar distinto** (ver «Al actualizar»).
 
-[English documentation](README_EN.md)
+**Cambios que se oyen**
 
-## Descarga y manuales
+- **Compresor.** Attack y Release ahora coinciden con los controles (con Attack en 10 ms la respuesta real era de unos 45 ms) y la reducción sigue la curva de Threshold y Ratio. El enlace estéreo usa el canal más fuerte: una voz solo en un canal se comprime igual que centrada. El resultado es que **comprime más y más rápido que en 1.0.2**.
+- **Peak 2.** Ahora usa el lookahead. Antes reaccionaba tarde y, con 30 ms de lookahead, un golpe repentino de voz se pasaba unos 4 dB del umbral.
+- **True Peak Limiter.** La bajada de ganancia es una rampa en lugar de un salto de una muestra, y la detección usa sobremuestreo 8x. Con sibilantes limitadas ~1 dB la salida llegaba a −0,5 dBTP con el techo en −1 dBTP; ahora respeta el techo con una tolerancia de unos 0,07 dB en el peor caso medido. El lookahead pasa de 1 a 2 ms (**+1 ms de latencia**) y el margen de seguridad de 0,01 a 0,1 dB.
 
-**[⬇ Descargar Santos Leveler v1.0.3 — Windows x64 VST3](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.3/Santos-Leveler-v1.0.3-Windows-x64-VST3.zip)**
+**Interfaz**
 
-Última versión estable · Windows 10/11 x64 · VST3
+- Rediseño completo: placa de hardware con módulos hundidos, mandos con anillo de LEDs, dos VU analógicos, pads luminosos, navegador de presets y lecturas LUFS de siete segmentos. Acento violeta.
+- La gráfica Live Response se separa en un panel de niveles (con líneas de Target y Peak) y un carril de ganancia en dB.
+- El panel Output muestra pico, true peak y la reducción del compresor y del limitador.
+- Los deslizadores muestran su ranura completa y se restauran a su valor por defecto con doble clic.
+- Tamaño mínimo 655 × 320, máximo 2620 × 1280, proporción fija.
+- Se muestra la latencia real que informa el plugin.
 
-- **[Manual de usuario — Español (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-Manual-Usuario-ES.pdf)**
-- **[User Manual — English (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-User-Manual-EN.pdf)**
-- [Ver la Release v1.0.3](https://github.com/santosmanilva/Santos-Leveler/releases/tag/v1.0.3)
+**Correcciones**
 
-> Los manuales publicados para v1.0.0 describen la interfaz anterior. En v1.0.3 los controles y los valores por defecto son los mismos, pero cambian el aspecto y la disposición de la interfaz, y el compresor y el limitador suenan distinto. Consulta el [CHANGELOG](CHANGELOG.md) antes de actualizar.
+- La gráfica Live Response podía quedarse esperando y bloquear la interfaz si el DAW reiniciaba el plugin con el transporte parado.
+- El bypass del DAW dejaba pasar el audio sin el retardo del lookahead (unos 31 ms por delante). Ahora usa el bypass alineado en latencia del plugin.
+- El LUFS integrado reservaba memoria sin límite durante la sesión; ahora usa un histograma de tamaño fijo y el mismo resultado (diferencia de 0,003 LU).
+- El medidor de true peak ya no puede leer por debajo del pico de muestra en contenido de alta frecuencia.
+- Los tests se compilaban en Release con los `assert` desactivados y no comprobaban nada; ahora siempre comprueban, y hay un test nuevo por cada corrección.
 
-![Santos Leveler](docs/santos-leveler-ui.png)
+**Al actualizar**
 
-Santos Leveler es un procesador VST3 para voz diseñado para mantener un nivel más uniforme de forma automática, conservando naturalidad y ofreciendo control visual detallado del proceso. Está desarrollado en C++ con JUCE.
+- Escucha tus presets (Default, Gentle, Natural, Broadcast y Tight) y ajusta Threshold, Ratio y Makeup si hace falta. Los valores de los presets no se han cambiado.
+- Si tienes automatizado el bypass del DAW sobre este plugin en sesiones antiguas, esa automatización puede perderse porque ahora controla el parámetro Bypass del plugin.
+- La latencia sube 1 ms. Los DAW que compensan latencia lo hacen solos.
+- Los manuales en PDF de v1.0.0 describen la interfaz anterior.
 
-**Diseñado y desarrollado por José Antonio Santos Santos.**
+## English
 
-> Santos Leveler es **software libre y de código abierto** bajo **GNU Affero General Public License v3.0 (AGPL-3.0-only)**. Puedes usar, estudiar, modificar y redistribuir el código conforme a los términos de AGPLv3. Consulta [LICENSE](LICENSE).
+Processing and interface update. **Existing presets may sound different** (see "Upgrade notes").
 
-## Historia del proyecto
+**Audible changes**
 
-Los primeros prototipos de Santos Leveler se crearon en **[MNodes](https://marionietoworld.com/mnodes/)**, el entorno modular de audio desarrollado por **Mario Nieto**. MNodes permitió explorar y validar inicialmente la idea del nivelador automático de voz antes de reimplementar el proyecto como plugin VST3 nativo en C++/JUCE.
+- **Compressor.** Attack and Release now match their controls (with Attack at 10 ms the real response was about 45 ms) and the reduction follows the Threshold and Ratio curve. Stereo link uses the louder channel: a voice on one channel is compressed like a centred one. The result is that it **compresses more and faster than 1.0.2**.
+- **Peak 2.** It now uses the lookahead. It used to react late and, with 30 ms of lookahead, a sudden voice burst exceeded the threshold by about 4 dB.
+- **True Peak Limiter.** Gain reduction is a ramp instead of a one-sample step, and detection uses 8x oversampling. With sibilants limited by ~1 dB the output reached −0.5 dBTP at a −1 dBTP ceiling; it now holds the ceiling to within about 0.07 dB in the worst measured case. Lookahead goes from 1 to 2 ms (**+1 ms of latency**) and the safety margin from 0.01 to 0.1 dB.
 
-La versión actual no depende de MNodes en tiempo de ejecución.
+**Interface**
 
-Más información: [HISTORY.md](HISTORY.md).
+- Full redesign: hardware faceplate with recessed modules, LED-ring knobs, two analogue VU meters, glowing pads, a preset navigator and seven-segment LUFS read-outs. Violet accent.
+- The Live Response graph is split into a level pane (with Target and Peak lines) and a gain lane in dB.
+- The Output panel shows peak, true peak and compressor and limiter gain reduction.
+- Sliders show their full slot and reset to their default with a double click.
+- Minimum size 655 × 320, maximum 2620 × 1280, fixed aspect ratio.
+- The latency reported by the plugin is shown on screen.
 
-## Compatibilidad
+**Fixes**
 
-- Windows 10/11 x64
-- VST3 de 64 bits
-- Efecto de audio para pistas mono y estéreo
-- Procesamiento estéreo enlazado
-- Interfaz redimensionable
-- Tamaño inicial: **1310 × 640** (mínimo 655 × 320, máximo 2620 × 1280, proporción fija)
-- Latencia: Lookahead + 2 ms del True Peak Limiter, informada al DAW y visible en el plugin
-- Sin versión Standalone
+- The Live Response graph could wait forever and freeze the UI if the host restarted the plugin while the transport was stopped.
+- The host bypass let audio through without the lookahead delay (about 31 ms early). It now uses the plugin's latency-aligned bypass.
+- Integrated LUFS allocated unbounded memory during a session; it now uses a fixed-size histogram with the same result (0.003 LU difference).
+- The true-peak meter can no longer read below the sample peak on high-frequency content.
+- Tests were built in Release with `assert` disabled and checked nothing; they now always check, with a new test for each fix.
 
-## Características principales
+**Upgrade notes**
 
-- **Voice Auto Level Rider** con Target, Gate, Speed, Detect, Lookahead, Hold y Release.
-- Detector combinado **FAST/SLOW**.
-- **Smart Gate** con histéresis.
-- **Preserve Dynamics**.
-- **Range Down / Range Up** hasta ±16 dB.
-- **Down Strength / Up Strength**.
-- **Intensity** global para Rider y Peak 2.
-- **Peak 2** con release adaptativo.
-- Módulo **Compressor** de voz feed-forward con soft knee y enlace estéreo por el canal más fuerte.
-- **True Peak Limiter** con 2 ms de lookahead, detección por sobremuestreo 8x, release de 120 ms y Ceiling ajustable de -9 a -1 dBTP.
-- Dos **VU analógicos** (Input y Leveler Out) y un panel **Output** con pico, true peak y reducción de ganancia del compresor y del limitador.
-- Medición **True Peak dBTP** y **LUFS-M / LUFS-S / LUFS-I**.
-- Gráfica **Live Response** con un panel de niveles (Input y Output, con las líneas de Target y Peak) y un carril de ganancia en dB (Rider y reducción de Peak); las cuatro trazas se activan individualmente.
-- Memorias **A/B**.
-- Presets de fábrica y presets de usuario `.slpreset`, con navegador de flechas que muestra «Custom» cuando los parámetros no coinciden con ningún preset de fábrica.
-- **Bypass alineado en latencia**.
-
-## Cadena de señal
-
-```text
-INPUT
-  ↓
-Voice Auto Level Rider
-  ├─ FAST/SLOW detector
-  ├─ Smart Gate
-  ├─ Preserve Dynamics
-  ├─ Range / Strength / Intensity
-  └─ Peak 2
-  ↓
-LEVELER OUT trim
-  ↓
-Voice Compressor
-  ↓
-True Peak Limiter
-  ↓
-Bypass alineado
-  ↓
-Peak / True Peak / LUFS
-  ↓
-OUTPUT
-```
-
-## Parámetros Default v1.0.3
-
-| Parámetro | Default |
-|---|---:|
-| Gate | -40 dB |
-| Target | -19 dB |
-| Speed | 79 ms |
-| Detect | 8 ms |
-| Lookahead | 30 ms |
-| Hold | 100 ms |
-| Release | 100 ms |
-| Peak | -8 dBFS |
-| Range Down | -12 dB |
-| Down Strength | 69 % |
-| Range Up | +15 dB |
-| Up Strength | 50 % |
-| Leveler Out | 0 dB |
-| Intensity | 100 % |
-| Compressor | On |
-| Comp Threshold | -20 dB |
-| Comp Ratio | 3:1 |
-| Comp Attack | 10 ms |
-| Comp Release | 120 ms |
-| Comp Makeup | +2 dB |
-| Ceiling | -1 dBTP |
-| Bypass | Off |
-
-## Presets
-
-Presets de fábrica: **Default, Gentle, Natural, Broadcast y Tight**.
-
-Los presets de usuario utilizan extensión `.slpreset` y se guardan por defecto en:
-
-```text
-Documentos\Santos Leveler Presets
-```
-
-## Medición
-
-- **INPUT (VU):** pico dBFS
-- **LEVELER OUT (VU):** pico dBFS antes del compresor
-- **OUTPUT · Peak:** pico dBFS después de compresor, True Peak y bypass final
-- **OUTPUT · True peak:** dBTP
-- **OUTPUT · Compressor / Limiter:** reducción de ganancia en dB
-- **OUTPUT · Loudness:** LUFS-M, LUFS-S y LUFS-I (botón Reset para reiniciar el integrado y el true peak)
-
-La medición de loudness se basa en algoritmos de **ITU-R BS.1770-5** y conceptos de EBU R128/Tech 3341. Santos Leveler no se presenta como equipo de medida certificado.
-
-## Compilar en Windows
-
-Requisitos:
-
-1. Visual Studio con **Desarrollo para el escritorio con C++**. El preset local actual utiliza Visual Studio 2026; el CI oficial compila también con Visual Studio 2022.
-2. CMake 3.22 o superior.
-3. Git for Windows.
-
-El proyecto usa C++17 y obtiene **JUCE 8.0.12** mediante CMake FetchContent.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
-```
-
-El script obtiene la versión del proyecto desde `CMakeLists.txt`, compila `SantosLeveler_VST3` y `SantosLevelerDSPTests`, ejecuta los tests DSP y muestra la ubicación del VST3 generado.
-
-## Instalación
-
-Copiar la carpeta completa `Santos Leveler.vst3` a:
-
-```text
-C:\Program Files\Common Files\VST3
-```
-
-Después, realizar un rescan de plugins VST3 en el DAW.
-
-## Licencia
-
-Santos Leveler se publica bajo **GNU Affero General Public License v3.0, exclusivamente versión 3 (`AGPL-3.0-only`)**.
-
-La licencia permite usar, estudiar, modificar y redistribuir el software bajo sus condiciones de copyleft. Las redistribuciones y versiones modificadas deben cumplir las obligaciones de AGPLv3, incluido el acceso al código fuente correspondiente cuando sea exigible.
-
-Consulte también:
-
-- [LICENSE](LICENSE)
-- [PUBLIC_SOURCE_NOTICE.md](PUBLIC_SOURCE_NOTICE.md)
-- [THIRD_PARTY.md](THIRD_PARTY.md)
-
-## Aviso técnico y responsabilidad
-
-El software se proporciona sin garantía en los términos establecidos por AGPLv3. Las funciones de loudness, pico y True Peak forman parte del flujo de procesamiento y no convierten Santos Leveler en equipo de medición certificado ni garantizan el cumplimiento de una especificación de emisión o entrega concreta.
-
-Las versiones modificadas deben identificarse claramente como tales y no deben presentarse como versiones oficiales o respaldadas por Santos Leveler sin autorización.
-
-## Contacto y colaboración
-
-**José Antonio Santos Santos**  
-GitHub: [santosmanilva/Santos-Leveler](https://github.com/santosmanilva/Santos-Leveler)  
-Errores y propuestas: [GitHub Issues](https://github.com/santosmanilva/Santos-Leveler/issues)
+- Listen to your presets (Default, Gentle, Natural, Broadcast and Tight) and adjust Threshold, Ratio and Makeup if needed. Preset values have not been changed.
+- If old sessions automate the host bypass on this plugin, that automation may be lost because it now drives the plugin's Bypass parameter.
+- Latency increases by 1 ms. Hosts with latency compensation handle it automatically.
+- The v1.0.0 PDF manuals describe the previous interface.
