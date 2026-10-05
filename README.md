@@ -24,7 +24,7 @@
 
 > Los manuales publicados para v1.0.0 siguen siendo válidos para v1.0.2. Las versiones 1.0.1 y 1.0.2 son actualizaciones de mantenimiento y no modifican los controles ni los valores de usuario documentados.
 
-![Santos Leveler](docs/santos-leveler-v1.0.0.jpg)
+![Santos Leveler](docs/santos-leveler-ui.png)
 
 Santos Leveler es un procesador VST3 para voz diseñado para mantener un nivel más uniforme de forma automática, conservando naturalidad y ofreciendo control visual detallado del proceso. Está desarrollado en C++ con JUCE.
 

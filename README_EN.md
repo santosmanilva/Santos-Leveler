@@ -24,7 +24,7 @@ Latest stable release · Windows 10/11 x64 · VST3
 
 > The v1.0.0 user manuals remain valid for v1.0.2. Versions 1.0.1 and 1.0.2 are maintenance updates and do not change the documented user controls or values.
 
-![Santos Leveler](docs/santos-leveler-v1.0.0.jpg)
+![Santos Leveler](docs/santos-leveler-ui.png)
 
 Santos Leveler is a VST3 voice processor designed to keep speech at a more consistent level automatically while preserving natural dynamics and providing detailed visual feedback. It is written in C++ with JUCE.
 
