@@ -1,51 +1,239 @@
 #include "PluginEditor.h"
+#include "UI/Controls.h"
+#include "UI/Displays.h"
+#include "UI/HeaderButtons.h"
+
+using namespace SantosUI;
 
 namespace
 {
-const auto bg=juce::Colour(0xff03070a), frame=juce::Colour(0xff0b1116), border=juce::Colour(0xff34424a);
-const auto text=juce::Colour(0xffeef4f6), muted=juce::Colour(0xff89969d);
-const auto cyan=juce::Colour(0xff19ccf4), yellow=juce::Colour(0xffffd51f), green=juce::Colour(0xff67e45f), lime=juce::Colour(0xff83e861), magenta=juce::Colour(0xffff58d9);
-const auto amber=juce::Colour(0xffffa047), copper=juce::Colour(0xffd66d32), grRed=juce::Colour(0xffff3b42);
-constexpr float baseWidth=2100.0f, baseHeight=1024.0f;
-constexpr double peakHoldMs=1000.0;
-constexpr float peakFallDbPerSecond=24.0f;
+// Faceplate, module frames and engraved titles. Static, so it is cached as an image.
+class Backdrop final : public juce::Component
+{
+public:
+    Backdrop()
+    {
+        setBufferedToImage (true);
+        setInterceptsMouseClicks (false, false);
+    }
 
-void styleLabel(juce::Label& l,float s,juce::Colour c,int j=juce::Justification::centred){l.setFont(juce::FontOptions(s));l.setColour(juce::Label::textColourId,c);l.setJustificationType(j);l.setInterceptsMouseClicks(false,false);}
-void panel(juce::Graphics& g,juce::Rectangle<float> r,float rad){g.setColour(juce::Colours::black.withAlpha(.72f));g.fillRoundedRectangle(r.translated(0,2),rad);juce::ColourGradient gr(juce::Colour(0xff172128),r.getTopLeft(),juce::Colour(0xff070c10),r.getBottomRight(),false);gr.addColour(.48,juce::Colour(0xff10171c));g.setGradientFill(gr);g.fillRoundedRectangle(r,rad);g.setColour(border);g.drawRoundedRectangle(r.reduced(.5f),rad,1);g.setColour(juce::Colours::white.withAlpha(.055f));g.drawLine(r.getX()+rad,r.getY()+1,r.getRight()-rad,r.getY()+1,1);}
-void riderGroup(juce::Graphics& g,juce::Rectangle<float> r,const juce::String& name,juce::Colour accent,float scale){g.setColour(accent.withAlpha(.035f));g.fillRoundedRectangle(r,5*scale);g.setColour(accent.withAlpha(.42f));g.drawRoundedRectangle(r.reduced(.5f*scale),5*scale,1*scale);auto tag=juce::Rectangle<float>(r.getX()+12*scale,r.getY()-7*scale,58*scale,15*scale);g.setColour(frame);g.fillRect(tag);g.setColour(accent);g.setFont(juce::FontOptions(10*scale).withStyle("Bold"));g.drawText(name,tag.toNearestInt(),juce::Justification::centred);}
-float pv(SantosLevelerAudioProcessor&p,const char*id){if(auto*v=p.apvts.getRawParameterValue(id))return v->load();return 0;}
+    static juce::Rectangle<float> levels()      { return { 26.0f,  88.0f, 206.0f, 314.0f }; }
+    static juce::Rectangle<float> response()    { return { 244.0f, 88.0f, 684.0f, 314.0f }; }
+    static juce::Rectangle<float> output()      { return { 940.0f, 88.0f, 344.0f, 314.0f }; }
+    static juce::Rectangle<float> leveler()     { return { 26.0f, 414.0f, 680.0f, 206.0f }; }
+    static juce::Rectangle<float> compressor()  { return { 718.0f, 414.0f, 566.0f, 206.0f }; }
 
-float meterDbToNorm(float db,bool hiRes){db=juce::jlimit(-60.0f,0.0f,db);const float total=hiRes?56.0f:34.0f;const float a=7.0f/total;const float b=(hiRes?9.0f:6.0f)/total;const float c=(hiRes?16.0f:9.0f)/total;const float d=(hiRes?24.0f:12.0f)/total;if(db<=-36.0f)return (db+60.0f)/24.0f*a;if(db<=-24.0f)return a+(db+36.0f)/12.0f*b;if(db<=-12.0f)return a+b+(db+24.0f)/12.0f*c;return a+b+c+(db+12.0f)/12.0f*d;}
-float meterNormToDb(float n,bool hiRes){n=juce::jlimit(0.0f,1.0f,n);const float total=hiRes?56.0f:34.0f;const float a=7.0f/total;const float b=(hiRes?9.0f:6.0f)/total;const float c=(hiRes?16.0f:9.0f)/total;if(n<=a)return -60.0f+24.0f*n/a;if(n<=a+b)return -36.0f+12.0f*(n-a)/b;if(n<=a+b+c)return -24.0f+12.0f*(n-a-b)/c;return -12.0f+12.0f*(n-a-b-c)/(1.0f-a-b-c);}
-juce::Colour meterCol(juce::Colour b,float db){if(db>-9.0f)return juce::Colour(0xffff5b61);if(db>=-24.0f)return yellow;return b;}
-void updatePeakHold(float currentDb,float& heldDb,double& holdUntil,double& lastUpdate){const auto now=juce::Time::getMillisecondCounterHiRes();if(currentDb>=heldDb){heldDb=currentDb;holdUntil=now+peakHoldMs;}else if(now>holdUntil){const auto dt=lastUpdate>0.0?static_cast<float>((now-lastUpdate)*0.001):0.0f;heldDb=juce::jmax(currentDb,heldDb-peakFallDbPerSecond*dt);}lastUpdate=now;}
-void drawHeldPeak(juce::Graphics&g,juce::Rectangle<float> area,float heldDb,int segments,float ledGap,bool hiRes){const auto norm=meterDbToNorm(heldDb,hiRes);if(norm<=0.0f)return;const auto index=juce::jlimit(0,segments-1,static_cast<int>(std::ceil(norm*segments))-1);const auto sh=(area.getHeight()-ledGap*(segments-1))/segments;const auto y=area.getBottom()-(index+1)*sh-index*ledGap;g.setColour(text.withAlpha(.95f));g.drawRoundedRectangle({area.getX(),y,area.getWidth(),sh},1.0f,1.2f);}
+    void paint (juce::Graphics& g) override
+    {
+        drawPlate (g, getLocalBounds().toFloat());
+
+        g.setFont (font (22.0f, true).withExtraKerningFactor (0.2f));
+        g.setColour (colour::ink);
+        g.drawText ("SANTOS", 60, 30, 140, 30, juce::Justification::centredLeft, false);
+        g.setColour (colour::accent);
+        g.drawText ("LEVELER", 184, 30, 170, 30, juce::Justification::centredLeft, false);
+        drawCaption (g, "Voice auto level rider", { 62.0f, 62.0f, 300.0f, 14.0f }, juce::Justification::centredLeft, colour::dim, 8.5f);
+
+        drawRecess (g, levels(), "Levels", colour::ledBlue);
+        drawRecess (g, response(), "Live response", colour::accent);
+        drawRecess (g, output(), "Output", colour::ledGreen);
+        drawRecess (g, leveler(), "Leveler", colour::ledOrange);
+        drawRecess (g, compressor(), "Compressor", colour::ledViolet);
+
+        g.setColour (colour::faint);
+        g.setFont (font (9.0f));
+        g.drawText (juce::String ("v") + JucePlugin_VersionString, juce::Rectangle<float> (compressor().getRight() - 120.0f, compressor().getBottom() - 24.0f, 104.0f, 14.0f),
+                    juce::Justification::centredRight, false);
+    }
+};
+} // namespace
+
+class SantosLevelerAudioProcessorEditor::Content final : public juce::Component
+{
+public:
+    explicit Content (SantosLevelerAudioProcessor& p)
+        : processor (p),
+          presetNavigator (p),
+          riderStatus (p, HeaderStatus::Mode::rider),
+          latencyStatus (p, HeaderStatus::Mode::latency),
+          inputVu (p, VuMeter::Source::input, "Input"),
+          outputVu (p, VuMeter::Source::levelerOutput, "Leveler out"),
+          screen (p),
+          legend (p),
+          stats (p),
+          outputPanel (p),
+          gate (p.apvts, "gate", "Gate", " dB", 1),
+          target (p.apvts, "target", "Target", " dB", 1),
+          speed (p.apvts, "speed", "Speed", " ms", 0),
+          detect (p.apvts, "detect", "Detect", " ms", 0),
+          lookahead (p.apvts, "lookahead", "Lookahead", " ms", 0),
+          hold (p.apvts, "hold", "Hold", " ms", 0),
+          release (p.apvts, "release", "Release", " ms", 0),
+          peak (p.apvts, "peakThreshold", "Peak", " dBFS", 1, colour::danger),
+          rangeDown (p.apvts, "rangeDown", "Rng dn", " dB", 1),
+          downStrength (p.apvts, "downStrength", "Dn str", " %", 0),
+          rangeUp (p.apvts, "rangeUp", "Rng up", " dB", 1),
+          upStrength (p.apvts, "upStrength", "Up str", " %", 0),
+          levelerOut (p.apvts, "output", "Out", " dB", 1),
+          compThreshold (p.apvts, "compThreshold", "Threshold", " dB", 1),
+          compRatio (p.apvts, "compRatio", "Ratio", " :1", 1),
+          compAttack (p.apvts, "compAttack", "Attack", " ms", 1),
+          compRelease (p.apvts, "compRelease", "Release", " ms", 0),
+          compMakeup (p.apvts, "compMakeup", "Makeup", " dB", 1),
+          ceiling (p.apvts, "ceiling", "Ceiling", " dBTP", 1, colour::danger),
+          intensity (p.apvts, "intensity", "Intensity", " %", 0, 70),
+          compAttachment (p.apvts, "compEnabled", compSwitch),
+          bypassAttachment (p.apvts, "bypass", bypassButton)
+    {
+        processor.ensureABStatesInitialised();
+
+        addAndMakeVisible (backdrop);
+
+        aButton.setButtonText ("A");
+        bButton.setButtonText ("B");
+        bypassButton.setButtonText ("Bypass");
+        bypassButton.setClickingTogglesState (true);
+        bypassButton.setColour (juce::TextButton::buttonOnColourId, colour::danger);
+        bypassButton.setTooltip ("Latency-aligned bypass");
+        aButton.onClick = [this] { processor.selectABState (false); updateABButtons(); };
+        bButton.onClick = [this] { processor.selectABState (true);  updateABButtons(); };
+        aButton.setTooltip ("Settings A");
+        bButton.setTooltip ("Settings B");
+        compSwitch.setTooltip ("Compressor on / off");
+        updateABButtons();
+
+        for (juce::Component* child : std::initializer_list<juce::Component*> {
+                 &presetNavigator, &aButton, &bButton, &bypassButton, &riderStatus, &latencyStatus, &aboutButton,
+                 &inputVu, &outputVu, &screen, &legend, &stats, &outputPanel,
+                 &gate, &target, &speed, &detect, &lookahead, &hold, &release, &peak,
+                 &rangeDown, &downStrength, &rangeUp, &upStrength, &levelerOut,
+                 &compSwitch, &compThreshold, &compRatio, &compAttack, &compRelease, &compMakeup, &ceiling, &intensity })
+            addAndMakeVisible (child);
+    }
+
+    void updateABButtons()
+    {
+        const auto useB = processor.isABStateB();
+        aButton.setToggleState (! useB, juce::dontSendNotification);
+        bButton.setToggleState (useB, juce::dontSendNotification);
+    }
+
+    void refresh()
+    {
+        updateABButtons();
+        presetNavigator.refresh();
+        riderStatus.repaint();
+        latencyStatus.repaint();
+        inputVu.refresh();
+        outputVu.refresh();
+        screen.refresh();
+        stats.repaint();
+        outputPanel.repaint();
+    }
+
+    void resized() override
+    {
+        const auto all = juce::Rectangle<int> (0, 0, static_cast<int> (layout::designWidth), static_cast<int> (layout::designHeight));
+        backdrop.setBounds (all);
+
+        // header
+        presetNavigator.setBounds (480, 30, 230, 38);
+        aButton.setBounds (736, 26, 78, 46);
+        bButton.setBounds (820, 26, 78, 46);
+        bypassButton.setBounds (904, 26, 112, 46);
+        riderStatus.setBounds (368, 30, 100, 40);
+        latencyStatus.setBounds (1090, 36, 100, 36);
+        aboutButton.setBounds (1236, 34, 32, 32);
+
+        // levels and live response
+        inputVu.setBounds (36, 128, 186, 128);
+        outputVu.setBounds (36, 268, 186, 128);
+        screen.setBounds (254, 126, 664, 204);
+        legend.setBounds (672, 92, 244, 20);
+        stats.setBounds (272, 342, 640, 50);
+
+        // output
+        outputPanel.setBounds (962, 136, 300, 260);
+
+        // leveler
+        const juce::Array<KnobUnit*> levelerKnobs { &gate, &target, &speed, &detect, &lookahead, &hold, &release, &peak };
+        for (int i = 0; i < levelerKnobs.size(); ++i)
+            levelerKnobs[i]->setBounds (37 + 82 * i, 452, KnobUnit::width, 112);
+
+        const juce::Array<SliderUnit*> sliders { &rangeDown, &downStrength, &rangeUp, &upStrength, &levelerOut };
+        for (int i = 0; i < sliders.size(); ++i)
+            sliders[i]->setBounds (46 + 132 * i, 566, 108, 34);
+
+        // compressor
+        const juce::Array<KnobUnit*> compKnobs { &compThreshold, &compRatio, &compAttack, &compRelease, &compMakeup, &ceiling };
+        for (int i = 0; i < compKnobs.size(); ++i)
+            compKnobs[i]->setBounds (731 + 90 * i, 452, KnobUnit::width, 112);
+
+        compSwitch.setBounds (1196, 420, 76, 24);
+        intensity.setBounds (744, 566, 270, 34);
+    }
+
+private:
+    SantosLevelerAudioProcessor& processor;
+
+    Backdrop backdrop;
+    PresetNavigator presetNavigator;
+    HeaderStatus riderStatus, latencyStatus;
+    AboutButton aboutButton;
+    juce::TextButton aButton, bButton, bypassButton;
+
+    VuMeter inputVu, outputVu;
+    ScreenFrame screen;
+    LegendBar legend;
+    StatsRow stats;
+    OutputPanel outputPanel;
+
+    KnobUnit gate, target, speed, detect, lookahead, hold, release, peak;
+    SliderUnit rangeDown, downStrength, rangeUp, upStrength, levelerOut;
+    KnobUnit compThreshold, compRatio, compAttack, compRelease, compMakeup, ceiling;
+    SliderUnit intensity;
+
+    juce::ToggleButton compSwitch;
+    juce::AudioProcessorValueTreeState::ButtonAttachment compAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
+};
+
+SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor (SantosLevelerAudioProcessor& p)
+    : AudioProcessorEditor (&p), processor (p)
+{
+    setLookAndFeel (&lookAndFeel);
+
+    content = std::make_unique<Content> (p);
+    addAndMakeVisible (*content);
+    content->sendLookAndFeelChange();   // controls were built before they joined this look-and-feel
+
+    constexpr int width = static_cast<int> (layout::designWidth), height = static_cast<int> (layout::designHeight);
+    setResizeLimits (width / 2, height / 2, width * 2, height * 2);
+    getConstrainer()->setFixedAspectRatio (layout::designWidth / layout::designHeight);
+    setResizable (true, true);
+    setSize (width, height);
+
+    startTimerHz (30);
 }
 
-SantosLevelerAudioProcessorEditor::SantosLookAndFeel::SantosLookAndFeel(){setColour(juce::Slider::textBoxTextColourId,text);setColour(juce::Slider::textBoxBackgroundColourId,juce::Colour(0xff090e12));setColour(juce::Slider::textBoxOutlineColourId,border);setColour(juce::Slider::trackColourId,juce::Colour(0xff202a30));}
+SantosLevelerAudioProcessorEditor::~SantosLevelerAudioProcessorEditor()
+{
+    stopTimer();
+    setLookAndFeel (nullptr);
+}
 
-void SantosLevelerAudioProcessorEditor::SantosLookAndFeel::drawRotarySlider(juce::Graphics&g,int x,int y,int w,int h,float pos,float a0,float a1,juce::Slider&s){auto b=juce::Rectangle<float>((float)x,(float)y,(float)w,(float)h).reduced(5);auto r=juce::jmax(12.f,juce::jmin(b.getWidth(),b.getHeight())*.40f);auto c=b.getCentre();auto ac=s.findColour(juce::Slider::rotarySliderFillColourId);auto ang=a0+pos*(a1-a0);g.setColour(ac.withAlpha(.055f));g.fillEllipse(juce::Rectangle<float>(r*2.45f,r*2.45f).withCentre(c));g.setColour(juce::Colours::black.withAlpha(.8f));g.fillEllipse(juce::Rectangle<float>(r*1.98f,r*1.98f).withCentre(c).translated(0,3));auto bezel=juce::Rectangle<float>(r*1.86f,r*1.86f).withCentre(c);juce::ColourGradient bz(juce::Colour(0xffa0a9ae),bezel.getTopLeft(),juce::Colour(0xff090d0f),bezel.getBottomRight(),false);bz.addColour(.2,juce::Colour(0xff626d73));bz.addColour(.45,juce::Colour(0xff303a40));bz.addColour(.72,juce::Colour(0xff11181c));g.setGradientFill(bz);g.fillEllipse(bezel);g.setColour(juce::Colours::black.withAlpha(.9f));g.drawEllipse(bezel,1.2f);g.setColour(juce::Colours::white.withAlpha(.14f));g.drawEllipse(bezel.reduced(1.2f),.8f);auto body=juce::Rectangle<float>(r*1.38f,r*1.38f).withCentre(c);juce::ColourGradient bd(juce::Colour(0xff6b767c),body.getTopLeft(),juce::Colour(0xff040607),body.getBottomRight(),false);bd.addColour(.28,juce::Colour(0xff3a454b));bd.addColour(.52,juce::Colour(0xff1b2429));g.setGradientFill(bd);g.fillEllipse(body);g.setColour(juce::Colours::black.withAlpha(.92f));g.drawEllipse(body,1);juce::ColourGradient hi(juce::Colours::white.withAlpha(.23f),c.x-r*.38f,c.y-r*.48f,juce::Colours::transparentWhite,c.x+r*.25f,c.y+r*.12f,false);g.setGradientFill(hi);g.fillEllipse(body.reduced(r*.08f).withHeight(body.getHeight()*.44f));for(int i=0;i<27;++i){auto f=(float)i/26.f;auto a=a0+(a1-a0)*f;auto p1=c+juce::Point<float>(std::sin(a),-std::cos(a))*(r*.99f);auto p2=c+juce::Point<float>(std::sin(a),-std::cos(a))*(r*1.19f);bool on=f<=pos+.001f;if(on){g.setColour(ac.withAlpha(.12f));g.drawLine({p1,p2},4.5f);}g.setColour((on?ac:juce::Colour(0xff344149)).withAlpha(on?.99f:.68f));g.drawLine({p1,p2},i%4==0?1.8f:1.f);}juce::Path arc;arc.addCentredArc(c.x,c.y,r*.90f,r*.90f,0,a0,ang,true);g.setColour(ac.withAlpha(.15f));g.strokePath(arc,juce::PathStrokeType(8.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));g.setColour(ac);g.strokePath(arc,juce::PathStrokeType(2.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));juce::Path p;p.addRoundedRectangle(-1.45f,-r*.61f,2.9f,r*.40f,1.4f);p.applyTransform(juce::AffineTransform::rotation(ang).translated(c.x,c.y));g.setColour(text);g.fillPath(p);g.setColour(ac);g.fillEllipse(c.x-2.2f,c.y-2.2f,4.4f,4.4f);}
+void SantosLevelerAudioProcessorEditor::paint (juce::Graphics& g)
+{
+    g.fillAll (colour::backdrop);
+}
 
-void SantosLevelerAudioProcessorEditor::SantosLookAndFeel::drawLinearSlider(juce::Graphics&g,int x,int y,int w,int h,float sp,float,float,juce::Slider::SliderStyle st,juce::Slider&s){if(st!=juce::Slider::LinearHorizontal){juce::LookAndFeel_V4::drawLinearSlider(g,x,y,w,h,sp,0,0,st,s);return;}auto ac=s.findColour(juce::Slider::thumbColourId);auto a=juce::Rectangle<float>((float)x,(float)y,(float)w,(float)h).reduced(12,10);auto cy=a.getCentreY();const auto thumbX=juce::jlimit(a.getX()+8.0f,a.getRight()-8.0f,sp);g.setColour(juce::Colours::black.withAlpha(.8f));g.fillRoundedRectangle(a.getX(),cy-8,a.getWidth(),16,8);g.setColour(juce::Colour(0xff3b484f));g.drawRoundedRectangle({a.getX(),cy-8,a.getWidth(),16},8,1);auto min=s.getMinimum(),max=s.getMaximum();float z=a.getX();if(min<0&&max>0)z=a.getX()+(float)((0-min)/(max-min))*a.getWidth();float l=0.0f,r=0.0f;if(s.getName()=="RANGE DOWN"){l=thumbX;r=a.getRight();}else{l=juce::jmin(thumbX,z);r=juce::jmax(thumbX,z);}g.setColour(ac.withAlpha(.16f));g.fillRoundedRectangle(l,cy-6,juce::jmax(2.f,r-l),12,6);g.setColour(ac);g.fillRoundedRectangle(l,cy-1.7f,juce::jmax(2.f,r-l),3.4f,1.7f);juce::ColourGradient tg(juce::Colour(0xffeef2f4),thumbX-8,cy-12,juce::Colour(0xff1a2024),thumbX+8,cy+12,false);tg.addColour(.45,juce::Colour(0xffa7b0b5));g.setGradientFill(tg);g.fillRoundedRectangle(thumbX-8,cy-12,16,24,3.5f);g.setColour(juce::Colours::black);g.drawRoundedRectangle({thumbX-8,cy-12,16,24},3.5f,1);}
+void SantosLevelerAudioProcessorEditor::resized()
+{
+    content->setBounds (0, 0, static_cast<int> (layout::designWidth), static_cast<int> (layout::designHeight));
+    content->setTransform (juce::AffineTransform::scale (static_cast<float> (getWidth()) / layout::designWidth));
+}
 
-SantosLevelerAudioProcessorEditor::SantosLevelerAudioProcessorEditor(SantosLevelerAudioProcessor&p):AudioProcessorEditor(&p),processor(p),history(p),inputMeter(p,MeterComponent::Source::input,"INPUT",cyan),outputMeter(p,MeterComponent::Source::levelerOutput,"LEVELER OUT",green),finalMeter(p),loudnessMeter(p),targetAttachment(p.apvts,"target",targetKnob),gateAttachment(p.apvts,"gate",gateKnob),speedAttachment(p.apvts,"speed",speedKnob),detectAttachment(p.apvts,"detect",detectKnob),lookaheadAttachment(p.apvts,"lookahead",lookaheadKnob),holdAttachment(p.apvts,"hold",holdKnob),releaseAttachment(p.apvts,"release",releaseKnob),peakThresholdAttachment(p.apvts,"peakThreshold",peakThresholdKnob),rangeDownAttachment(p.apvts,"rangeDown",rangeDownSlider),downStrengthAttachment(p.apvts,"downStrength",downStrengthSlider),rangeUpAttachment(p.apvts,"rangeUp",rangeUpSlider),upStrengthAttachment(p.apvts,"upStrength",upStrengthSlider),outputAttachment(p.apvts,"output",outputSlider),intensityAttachment(p.apvts,"intensity",intensitySlider),compThresholdAttachment(p.apvts,"compThreshold",compThresholdKnob),compRatioAttachment(p.apvts,"compRatio",compRatioKnob),compAttackAttachment(p.apvts,"compAttack",compAttackKnob),compReleaseAttachment(p.apvts,"compRelease",compReleaseKnob),compMakeupAttachment(p.apvts,"compMakeup",compMakeupKnob),ceilingAttachment(p.apvts,"ceiling",ceilingKnob),compEnabledAttachment(p.apvts,"compEnabled",compButton),bypassAttachment(p.apvts,"bypass",bypassButton){setLookAndFeel(&lookAndFeel);setSize(1310,640);setResizable(true,true);setResizeLimits(1310,640,2625,1280);processor.ensureABStatesInitialised();titleLabel.setText("Santos Leveler",juce::dontSendNotification);styleLabel(titleLabel,34,text,juce::Justification::centredLeft);addAndMakeVisible(titleLabel);subtitleLabel.setText("VOICE AUTO LEVEL RIDER",juce::dontSendNotification);styleLabel(subtitleLabel,13,muted,juce::Justification::centredLeft);addAndMakeVisible(subtitleLabel);intensitySlider.setName("INTENSITY");intensitySlider.setSliderStyle(juce::Slider::LinearHorizontal);intensitySlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,64,24);intensitySlider.setTextValueSuffix(" %");intensitySlider.setNumDecimalPlacesToDisplay(0);intensitySlider.setColour(juce::Slider::thumbColourId,cyan);addAndMakeVisible(intensitySlider);intensityLabel.setText("INTENSITY",juce::dontSendNotification);styleLabel(intensityLabel,11,cyan,juce::Justification::centredLeft);addAndMakeVisible(intensityLabel);configureKnob(gateKnob,gateLabel,"GATE"," dB",1,cyan);configureKnob(targetKnob,targetLabel,"TARGET"," dB",1,lime);configureKnob(speedKnob,speedLabel,"SPEED"," ms",0,cyan);configureKnob(detectKnob,detectLabel,"DETECT"," ms",0,cyan);configureKnob(lookaheadKnob,lookaheadLabel,"LOOKAHEAD"," ms",0,cyan);configureKnob(holdKnob,holdLabel,"HOLD"," ms",0,cyan);configureKnob(releaseKnob,releaseLabel,"RELEASE"," ms",0,cyan);configureKnob(peakThresholdKnob,peakThresholdLabel,"PEAK"," dBFS",1,magenta);configureFader(rangeDownSlider,rangeDownLabel,"RANGE DOWN"," dB",1,cyan);configureFader(downStrengthSlider,downStrengthLabel,"DOWN STRENGTH"," %",0,cyan);configureFader(rangeUpSlider,rangeUpLabel,"RANGE UP"," dB",1,yellow);configureFader(upStrengthSlider,upStrengthLabel,"UP STRENGTH"," %",0,yellow);configureFader(outputSlider,outputLabel,"LEVELER OUT"," dB",1,green);configureKnob(compThresholdKnob,compThresholdLabel,"THRESHOLD"," dB",1,amber);configureKnob(compRatioKnob,compRatioLabel,"RATIO"," :1",1,amber);configureKnob(compAttackKnob,compAttackLabel,"ATTACK"," ms",1,amber);configureKnob(compReleaseKnob,compReleaseLabel,"RELEASE"," ms",0,amber);configureKnob(compMakeupKnob,compMakeupLabel,"MAKEUP"," dB",1,amber);configureKnob(ceilingKnob,ceilingLabel,"CEILING"," dBTP",1,copper);configureHeaderButton(resetLoudnessButton,"RESET");resetLoudnessButton.onClick=[this]{processor.requestLoudnessReset();};configureHeaderButton(aButton,"A");configureHeaderButton(bButton,"B");aButton.onClick=[this]{processor.selectABState(false);updateABButtons();};bButton.onClick=[this]{processor.selectABState(true);updateABButtons();};updateABButtons();configureHeaderButton(bypassButton,"BYPASS");bypassButton.setClickingTogglesState(true);configureHeaderButton(compButton,"COMP");compButton.setClickingTogglesState(true);compButton.setColour(juce::TextButton::buttonColourId,juce::Colours::black);compButton.setColour(juce::TextButton::buttonOnColourId,amber);compButton.setColour(juce::TextButton::textColourOffId,amber);compButton.setColour(juce::TextButton::textColourOnId,text);addAndMakeVisible(history);addAndMakeVisible(inputMeter);addAndMakeVisible(outputMeter);addAndMakeVisible(finalMeter);addAndMakeVisible(loudnessMeter);resetLoudnessButton.toFront(false);startTimerHz(20);}
-SantosLevelerAudioProcessorEditor::~SantosLevelerAudioProcessorEditor(){setLookAndFeel(nullptr);}
-void SantosLevelerAudioProcessorEditor::configureKnob(juce::Slider&s,juce::Label&l,const juce::String&n,const juce::String&sf,int d,juce::Colour a){s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);s.setTextBoxStyle(juce::Slider::TextBoxBelow,false,104,30);s.setTextValueSuffix(sf);s.setNumDecimalPlacesToDisplay(d);s.setColour(juce::Slider::rotarySliderFillColourId,a);addAndMakeVisible(s);l.setText(n,juce::dontSendNotification);styleLabel(l,13,text);addAndMakeVisible(l);}
-void SantosLevelerAudioProcessorEditor::configureFader(juce::Slider&s,juce::Label&l,const juce::String&n,const juce::String&sf,int d,juce::Colour a){s.setName(n);s.setSliderStyle(juce::Slider::LinearHorizontal);s.setTextBoxStyle(juce::Slider::TextBoxAbove,false,100,28);s.setTextValueSuffix(sf);s.setNumDecimalPlacesToDisplay(d);s.setColour(juce::Slider::thumbColourId,a);addAndMakeVisible(s);l.setText(n,juce::dontSendNotification);styleLabel(l,13,a);addAndMakeVisible(l);}
-void SantosLevelerAudioProcessorEditor::configureHeaderButton(juce::TextButton&b,const juce::String&t){b.setButtonText(t);b.setColour(juce::TextButton::buttonColourId,juce::Colour(0xff101a20));b.setColour(juce::TextButton::buttonOnColourId,juce::Colour(0xff18323b));b.setColour(juce::TextButton::textColourOffId,cyan);b.setColour(juce::TextButton::textColourOnId,text);addAndMakeVisible(b);}
-void SantosLevelerAudioProcessorEditor::updateABButtons(){const auto useB=processor.isABStateB();aButton.setToggleState(!useB,juce::dontSendNotification);bButton.setToggleState(useB,juce::dontSendNotification);}
-
-void SantosLevelerAudioProcessorEditor::paint(juce::Graphics&g){g.fillAll(bg);auto sx=(float)getWidth()/baseWidth,sy=(float)getHeight()/baseHeight,s=juce::jmin(sx,sy);auto out=getLocalBounds().toFloat().reduced(4*s);juce::ColourGradient fg(juce::Colour(0xff35454f),out.getTopLeft(),juce::Colour(0xff040608),out.getBottomRight(),false);fg.addColour(.38,juce::Colour(0xff172229));g.setGradientFill(fg);g.fillRoundedRectangle(out,14*s);g.setColour(juce::Colour(0xff829099));g.drawRoundedRectangle(out.reduced(.5f*s),14*s,1*s);g.setColour(juce::Colours::black.withAlpha(.85f));g.drawRoundedRectangle(out.reduced(5*s),9*s,2*s);auto head=juce::Rectangle<float>(10*sx,10*sy,1516*sx,80*sy);panel(g,head,5*s);auto ride=juce::Rectangle<float>(487*sx,28*sy,196*sx,43*sy);bool act=processor.getRiderActive();g.setColour((act?green:juce::Colour(0xff243038)).withAlpha(.26f));g.fillRoundedRectangle(ride,4*s);g.setColour(act?green:muted);g.setFont(juce::FontOptions(15*s));g.drawText(act?"A.R.":"IDLE",ride.toNearestInt().withTrimmedRight((int)(32*sx)),juce::Justification::centred);g.fillEllipse(ride.getRight()-24*sx,ride.getCentreY()-4.5f*s,9*s,9*s);panel(g,{20*sx,648*sy,1496*sx,190*sy},7*s);panel(g,{20*sx,848*sy,1496*sx,116*sy},7*s);riderGroup(g,{34*sx,858*sy,584*sx,96*sy},"DOWN",cyan,s);riderGroup(g,{632*sx,858*sy,584*sx,96*sy},"UP",yellow,s);g.setColour(green.withAlpha(.18f));g.drawRoundedRectangle({1230*sx,858*sy,272*sx,96*sy},5*s,1*s);auto dyn=juce::Rectangle<float>(1544*sx,10*sy,546*sx,954*sy);panel(g,dyn,8*s);g.setColour(amber.withAlpha(.16f));g.drawRoundedRectangle(dyn.reduced(5*s),7*s,1.2f*s);g.setColour(amber);g.setFont(juce::FontOptions(26*s).withStyle("Bold"));g.drawText("DYNAMICS",(int)(1564*sx),(int)(22*sy),(int)(506*sx),(int)(40*sy),juce::Justification::centred);g.setFont(juce::FontOptions(13*s));g.setColour(muted);g.drawText("Santos Leveler v1.0.0",(int)(36*sx),(int)(982*sy),(int)(240*sx),(int)(24*sy),juce::Justification::centredLeft);g.setColour(cyan);g.drawText("AUTO LEVEL RIDER TECHNOLOGY",(int)(290*sx),(int)(982*sy),(int)(330*sx),(int)(24*sy),juce::Justification::centredLeft);g.setColour(muted);g.drawText("DESIGNED & DEVELOPED BY SANTOS",(int)(1135*sx),(int)(982*sy),(int)(365*sx),(int)(24*sy),juce::Justification::centredRight);}
-
-void SantosLevelerAudioProcessorEditor::resized(){auto sx=(float)getWidth()/baseWidth,sy=(float)getHeight()/baseHeight;titleLabel.setBounds((int)(36*sx),(int)(18*sy),(int)(360*sx),(int)(40*sy));subtitleLabel.setBounds((int)(38*sx),(int)(64*sy),(int)(280*sx),(int)(16*sy));intensityLabel.setBounds((int)(710*sx),(int)(19*sy),(int)(110*sx),(int)(16*sy));intensitySlider.setBounds((int)(700*sx),(int)(33*sy),(int)(390*sx),(int)(39*sy));aButton.setBounds((int)(1110*sx),(int)(29*sy),(int)(85*sx),(int)(40*sy));bButton.setBounds((int)(1205*sx),(int)(29*sy),(int)(85*sx),(int)(40*sy));bypassButton.setBounds((int)(1300*sx),(int)(29*sy),(int)(150*sx),(int)(40*sy));inputMeter.setBounds((int)(20*sx),(int)(100*sy),(int)(170*sx),(int)(530*sy));history.setBounds((int)(200*sx),(int)(100*sy),(int)(1136*sx),(int)(530*sy));outputMeter.setBounds((int)(1346*sx),(int)(100*sy),(int)(170*sx),(int)(530*sy));juce::Slider*ks[]={&gateKnob,&targetKnob,&speedKnob,&detectKnob,&lookaheadKnob,&holdKnob,&releaseKnob,&peakThresholdKnob};juce::Label*ls[]={&gateLabel,&targetLabel,&speedLabel,&detectLabel,&lookaheadLabel,&holdLabel,&releaseLabel,&peakThresholdLabel};float cw=1468.f/8.f;for(int i=0;i<8;++i){auto x=(34+cw*i)*sx;ls[i]->setBounds((int)x,(int)(661*sy),(int)(cw*sx),(int)(22*sy));ks[i]->setBounds((int)(x+7*sx),(int)(684*sy),(int)((cw-14)*sx),(int)(143*sy));}auto setPair=[&](juce::Slider&s1,juce::Label&l1,juce::Slider&s2,juce::Label&l2,float x){constexpr float w=268.f,gap=20.f;l1.setBounds((int)((x+8)*sx),(int)(869*sy),(int)(w*sx),(int)(20*sy));s1.setBounds((int)((x+8)*sx),(int)(888*sy),(int)(w*sx),(int)(60*sy));l2.setBounds((int)((x+8+w+gap)*sx),(int)(869*sy),(int)(w*sx),(int)(20*sy));s2.setBounds((int)((x+8+w+gap)*sx),(int)(888*sy),(int)(w*sx),(int)(60*sy));};setPair(rangeDownSlider,rangeDownLabel,downStrengthSlider,downStrengthLabel,34.f);setPair(rangeUpSlider,rangeUpLabel,upStrengthSlider,upStrengthLabel,632.f);outputLabel.setBounds((int)(1242*sx),(int)(869*sy),(int)(248*sx),(int)(20*sy));outputSlider.setBounds((int)(1242*sx),(int)(888*sy),(int)(248*sx),(int)(60*sy));compButton.setBounds((int)(1564*sx),(int)(78*sy),(int)(142*sx),(int)(38*sy));resetLoudnessButton.setBounds((int)(1928*sx),(int)(78*sy),(int)(150*sx),(int)(38*sy));auto setDyn=[&](juce::Slider&s,juce::Label&l,float y){l.setBounds((int)(1556*sx),(int)(y*sy),(int)(158*sx),(int)(18*sy));s.setBounds((int)(1556*sx),(int)((y+16)*sy),(int)(158*sx),(int)(112*sy));};setDyn(compThresholdKnob,compThresholdLabel,126.f);setDyn(compRatioKnob,compRatioLabel,262.f);setDyn(compAttackKnob,compAttackLabel,398.f);setDyn(compReleaseKnob,compReleaseLabel,534.f);setDyn(compMakeupKnob,compMakeupLabel,670.f);setDyn(ceilingKnob,ceilingLabel,806.f);finalMeter.setBounds((int)(1722*sx),(int)(120*sy),(int)(190*sx),(int)(820*sy));loudnessMeter.setBounds((int)(1920*sx),(int)(120*sy),(int)(170*sx),(int)(820*sy));}
-void SantosLevelerAudioProcessorEditor::timerCallback(){updateABButtons();auto sy=(float)getHeight()/baseHeight;repaint(0,0,getWidth(),(int)(90*sy));history.repaint();inputMeter.repaint();outputMeter.repaint();finalMeter.repaint();loudnessMeter.repaint();}
-
-void SantosLevelerAudioProcessorEditor::HistoryComponent::mouseUp(const juce::MouseEvent& e){auto r=getLocalBounds().toFloat();auto in=r.reduced(10);auto top=in.removeFromTop(38);auto leg=top.removeFromRight(500);if(!leg.contains(e.position))return;const auto cellWidth=leg.getWidth()/4.0f;const auto index=juce::jlimit(0,3,(int)((e.position.x-leg.getX())/cellWidth));toggleTrace(index);}
-
-void SantosLevelerAudioProcessorEditor::HistoryComponent::paint(juce::Graphics&g){auto r=getLocalBounds().toFloat();panel(g,r,7);auto in=r.reduced(10);auto top=in.removeFromTop(38);auto stats=in.removeFromBottom(92);in.removeFromBottom(8);g.setColour(text);g.setFont(juce::FontOptions(14));g.drawText("LIVE RESPONSE",top.toNearestInt(),juce::Justification::centredLeft);const juce::Colour cs[]={cyan,yellow,magenta,green};const char*ns[]={"INPUT","RIDER","PEAK","LEVELER OUT"};bool visible[4]={isTraceVisible(0),isTraceVisible(1),isTraceVisible(2),isTraceVisible(3)};auto leg=top.removeFromRight(500);for(int i=0;i<4;++i){auto it=leg.removeFromLeft(leg.getWidth()/(4-i));auto lc=visible[i]?cs[i]:cs[i].withAlpha(.20f);g.setColour(lc);g.drawLine(it.getX()+4,it.getCentreY(),it.getX()+26,it.getCentreY(),2);g.setFont(juce::FontOptions(10));g.setColour(visible[i]?text:muted.withAlpha(.45f));g.drawText(ns[i],it.withTrimmedLeft(32).toNearestInt(),juce::Justification::centredLeft);}auto chart=in;g.setColour(juce::Colour(0xff03080b));g.fillRoundedRectangle(chart,4);auto plot=chart.reduced(42,14);for(int i=0;i<=5;++i){auto y=plot.getY()+plot.getHeight()*i/5.f;g.setColour(juce::Colour(0xff24313a));g.drawHorizontalLine((int)y,plot.getX(),plot.getRight());g.setColour(muted);g.setFont(juce::FontOptions(9));g.drawText(juce::String(-12*i),(int)chart.getX()+2,(int)y-7,32,14,juce::Justification::centredRight);}auto pts=processor.getHistory().copyLatest(320);if(pts.size()>=2){auto ly=[&](float d){auto n=juce::jlimit(0.f,1.f,(d+60)/60);return plot.getBottom()-n*plot.getHeight();};auto gy=[&](float d){auto n=juce::jlimit(0.f,1.f,(d+12)/24);return plot.getBottom()-n*plot.getHeight();};auto peakY=[&](float d){auto n=juce::jlimit(0.f,1.f,(d+18)/18);return plot.getBottom()-n*plot.getHeight();};auto path=[&](auto f){juce::Path p;for(size_t i=0;i<pts.size();++i){auto x=plot.getX()+plot.getWidth()*(float)i/(float)(pts.size()-1),y=f(pts[i]);if(i==0)p.startNewSubPath(x,y);else p.lineTo(x,y);}return p;};auto ip=path([&](const SantosHistoryPoint&p){return ly(p.inputDb);}),op=path([&](const SantosHistoryPoint&p){return ly(p.outputDb);}),rp=path([&](const SantosHistoryPoint&p){return gy(p.riderDb);}),pp=path([&](const SantosHistoryPoint&p){return peakY(p.peakDb);});auto fill=[&](juce::Path p){p.lineTo(plot.getRight(),plot.getBottom());p.lineTo(plot.getX(),plot.getBottom());p.closeSubPath();return p;};if(visible[0]){g.setColour(cyan.withAlpha(.10f));g.fillPath(fill(ip));g.setColour(cyan);g.strokePath(ip,juce::PathStrokeType(1.8f));}if(visible[3]){g.setColour(green.withAlpha(.12f));g.fillPath(fill(op));}if(visible[1]){g.setColour(yellow);g.strokePath(rp,juce::PathStrokeType(2));}if(visible[2]){g.setColour(magenta);g.strokePath(pp,juce::PathStrokeType(1.8f));}if(visible[3]){g.setColour(green);g.strokePath(op,juce::PathStrokeType(1.8f));}}const float vs[]={processor.getRiderDb(),pv(processor,"target"),pv(processor,"peakThreshold"),processor.getOutputMeterDb()};const char*sn[]={"RIDER","TARGET","PEAK","LEVELER OUT"};const char*sf[]={" dB"," dB"," dBFS"," dB"};const juce::Colour sc[]={yellow,lime,magenta,green};auto sw=stats.getWidth()/4;for(int i=0;i<4;++i){auto c=stats.withX(stats.getX()+sw*i).withWidth(sw);if(i){g.setColour(border);g.drawVerticalLine((int)c.getX(),c.getY()+14,c.getBottom()-14);}g.setColour(muted);g.setFont(juce::FontOptions(12));g.drawText(sn[i],c.withTrimmedTop(12).withHeight(18).toNearestInt(),juce::Justification::centred);g.setColour(sc[i]);g.setFont(juce::FontOptions(24));g.drawText(juce::String(vs[i],1)+sf[i],c.withTrimmedTop(35).toNearestInt(),juce::Justification::centredTop);}if(processor.hasHostTransport()&&!processor.getTransportPlaying()){g.setColour(juce::Colour(0xaa03070a));g.fillRoundedRectangle(chart,4);g.setColour(text);g.drawText("PAUSED",chart.toNearestInt(),juce::Justification::centred);}}
-
-void SantosLevelerAudioProcessorEditor::MeterComponent::paint(juce::Graphics&g){const auto db=source==Source::input?processor.getInputMeterDb():processor.getOutputMeterDb();updatePeakHold(db,heldPeakDb,peakHoldUntilMs,lastPeakUpdateMs);auto r=getLocalBounds().toFloat();panel(g,r,7);g.setColour(colour);g.setFont(juce::FontOptions(14));g.drawText(label,0,16,getWidth(),20,juce::Justification::centred);g.setFont(juce::FontOptions(18));g.drawText(juce::String(db,1)+" dBFS",0,42,getWidth(),28,juce::Justification::centred);auto ma=r.withTrimmedTop(82).withTrimmedBottom(38).reduced(14,0);auto scale=ma.removeFromLeft(28);ma.reduce(6,0);auto gap=juce::jmax(5.f,ma.getWidth()*.08f),bw=(ma.getWidth()-gap)/2;const auto n=meterDbToNorm(db,false);constexpr int segments=34;const float gh=2.0f,sh=(ma.getHeight()-gh*(segments-1))/segments;for(int ch=0;ch<2;++ch){auto bar=juce::Rectangle<float>(ma.getX()+(bw+gap)*ch,ma.getY(),bw,ma.getHeight());g.setColour(juce::Colours::black);g.fillRoundedRectangle(bar.expanded(2),3);for(int i=0;i<segments;++i){const auto ln=(float)(i+1)/segments,yy=bar.getBottom()-(i+1)*sh-i*gh;auto seg=juce::Rectangle<float>(bar.getX(),yy,bar.getWidth(),sh);const auto ledDb=meterNormToDb(ln,false);g.setColour(meterCol(colour,ledDb).withAlpha(ln<=n?.95f:.08f));g.fillRoundedRectangle(seg,1);}drawHeldPeak(g,bar,heldPeakDb,segments,gh,false);}const float marks[]={0,-12,-24,-36,-48,-60};g.setFont(juce::FontOptions(8.5f));for(auto value:marks){auto y=scale.getBottom()-meterDbToNorm(value,false)*scale.getHeight();g.setColour(muted);g.drawText(juce::String((int)value),scale.withY(y-7).withHeight(14).toNearestInt(),juce::Justification::centredRight);}g.setColour(muted);g.setFont(juce::FontOptions(9));g.drawText("PEAK dBFS",0,getHeight()-29,getWidth(),16,juce::Justification::centred);}
-
-void SantosLevelerAudioProcessorEditor::FinalMeterComponent::paint(juce::Graphics&g){const auto outDb=processor.getFinalOutputMeterDb();const auto grDb=juce::jlimit(-18.0f,0.0f,processor.getCompressorReductionDb());updatePeakHold(outDb,heldPeakDb,peakHoldUntilMs,lastPeakUpdateMs);auto r=getLocalBounds().toFloat();panel(g,r,7);auto top=r.reduced(8).removeFromTop(58);auto outCell=top.removeFromLeft(top.getWidth()*.62f);g.setColour(muted);g.setFont(juce::FontOptions(8.5f));g.drawText("FINAL OUT",outCell.withHeight(14).toNearestInt(),juce::Justification::centred);g.setColour(green);g.setFont(juce::FontOptions(13));g.drawText(juce::String(outDb,1)+" dBFS",outCell.withTrimmedTop(15).toNearestInt(),juce::Justification::centredTop);g.setColour(muted);g.setFont(juce::FontOptions(8.5f));g.drawText("GR",top.withHeight(14).toNearestInt(),juce::Justification::centred);g.setColour(grRed);g.setFont(juce::FontOptions(13));g.drawText(juce::String(grDb,1)+" dB",top.withTrimmedTop(15).toNearestInt(),juce::Justification::centredTop);auto ma=r.withTrimmedTop(82).withTrimmedBottom(38).reduced(12,0);auto scale=ma.removeFromLeft(28);auto grArea=ma.removeFromRight(14);ma.removeFromRight(8);ma.reduce(4,0);auto gap=juce::jmax(5.f,ma.getWidth()*.08f),bw=(ma.getWidth()-gap)/2;constexpr int segments=56;const float ledGap=1.15f,sh=(ma.getHeight()-ledGap*(segments-1))/segments;const auto outNorm=meterDbToNorm(outDb,true);for(int ch=0;ch<2;++ch){auto bar=juce::Rectangle<float>(ma.getX()+(bw+gap)*ch,ma.getY(),bw,ma.getHeight());g.setColour(juce::Colours::black);g.fillRoundedRectangle(bar.expanded(2),3);for(int i=0;i<segments;++i){const auto ln=(float)(i+1)/segments;const auto y=bar.getBottom()-(i+1)*sh-i*ledGap;auto seg=juce::Rectangle<float>(bar.getX(),y,bar.getWidth(),sh);const auto ledDb=meterNormToDb(ln,true);g.setColour(meterCol(green,ledDb).withAlpha(ln<=outNorm?.96f:.07f));g.fillRoundedRectangle(seg,1);}drawHeldPeak(g,bar,heldPeakDb,segments,ledGap,true);}constexpr int grSegments=18;const float grGap=2.0f,grH=(grArea.getHeight()-grGap*(grSegments-1))/grSegments;const auto grNorm=juce::jlimit(0.0f,1.0f,-grDb/18.0f);g.setColour(juce::Colours::black);g.fillRoundedRectangle(grArea.expanded(2),3);for(int i=0;i<grSegments;++i){auto seg=juce::Rectangle<float>(grArea.getX(),grArea.getY()+i*(grH+grGap),grArea.getWidth(),grH);const bool on=((float)(i+1)/grSegments)<=grNorm+0.0001f;g.setColour(grRed.withAlpha(on?.98f:.10f));g.fillRoundedRectangle(seg,1);}const float marks[]={0,-12,-24,-36,-48,-60};g.setFont(juce::FontOptions(8.5f));for(auto value:marks){auto y=scale.getBottom()-meterDbToNorm(value,true)*scale.getHeight();g.setColour(muted);g.drawText(juce::String((int)value),scale.withY(y-7).withHeight(14).toNearestInt(),juce::Justification::centredRight);}auto tp=processor.getOutputTruePeakDbTP();g.setColour(muted);g.setFont(juce::FontOptions(8));g.drawText("TP "+juce::String(tp,1)+" dBTP",0,getHeight()-29,getWidth(),16,juce::Justification::centred);}
-
-void SantosLevelerAudioProcessorEditor::LoudnessMeterComponent::paint(juce::Graphics&g){auto r=getLocalBounds().toFloat();panel(g,r,7);const auto loudnessBlue=juce::Colour(0xff3f7f98);const float values[]={processor.getMomentaryLufs(),processor.getShortTermLufs(),processor.getIntegratedLufs()};const char*names[]={"LUFS-M","LUFS-S","LUFS-I"};g.setColour(loudnessBlue.brighter(.25f));g.setFont(juce::FontOptions(14));g.drawText("LOUDNESS",0,12,getWidth(),20,juce::Justification::centred);auto header=r.withTrimmedTop(36).withHeight(42);auto third=header.getWidth()/3.0f;for(int ch=0;ch<3;++ch){auto cell=juce::Rectangle<float>(header.getX()+third*ch,header.getY(),third,header.getHeight());g.setColour(muted);g.setFont(juce::FontOptions(7.2f));g.drawText(names[ch],cell.withHeight(13).toNearestInt(),juce::Justification::centred);g.setColour(loudnessBlue.brighter(.28f));g.setFont(juce::FontOptions(9.5f));g.drawText(juce::String(values[ch],1),cell.withTrimmedTop(13).toNearestInt(),juce::Justification::centredTop);}auto ma=r.withTrimmedTop(82).withTrimmedBottom(38).reduced(14,0);auto scale=ma.removeFromLeft(28);ma.reduce(6,0);constexpr float gap=4.0f;auto bw=(ma.getWidth()-2.0f*gap)/3.0f;constexpr int segments=34;const float segGap=2.0f,sh=(ma.getHeight()-segGap*(segments-1))/segments;for(int ch=0;ch<3;++ch){auto meter=juce::Rectangle<float>(ma.getX()+(bw+gap)*ch,ma.getY(),bw,ma.getHeight());g.setColour(juce::Colours::black);g.fillRoundedRectangle(meter.expanded(2),3);const auto norm=juce::jlimit(0.f,1.f,(values[ch]+25.0f)/10.0f);for(int i=0;i<segments;++i){auto ln=(float)(i+1)/segments;auto y=meter.getBottom()-(i+1)*sh-i*segGap;auto seg=juce::Rectangle<float>(meter.getX(),y,meter.getWidth(),sh);g.setColour(loudnessBlue.withAlpha(ln<=norm?.82f:.07f));g.fillRoundedRectangle(seg,1);}}g.setFont(juce::FontOptions(8.1f));for(int i=0;i<=4;++i){const auto value=-15.0f-2.5f*i;auto y=scale.getY()+scale.getHeight()*i/4.f;g.setColour(muted);g.drawText(juce::String(value,1),scale.withY(y-7).withHeight(14).toNearestInt(),juce::Justification::centredRight);}g.setColour(muted);g.setFont(juce::FontOptions(8));g.drawText("-25 … -15 LUFS",0,getHeight()-29,getWidth(),16,juce::Justification::centred);}
+void SantosLevelerAudioProcessorEditor::timerCallback()
+{
+    content->refresh();
+}

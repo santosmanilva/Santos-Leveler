@@ -56,6 +56,11 @@ target_sources(SantosLeveler PRIVATE
     Source/DenormalProtection.h
     Source/Constants.h
     Source/TruePeakCoefficients.h
+    Source/UI/Theme.h
+    Source/UI/LookAndFeel.h
+    Source/UI/Controls.h
+    Source/UI/Displays.h
+    Source/UI/HeaderButtons.h
 )
 
 target_compile_definitions(SantosLeveler

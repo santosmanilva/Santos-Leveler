@@ -1,3 +1,12 @@
+// These tests rely on assert(). CI builds them in Release, where NDEBUG would
+// silently turn every check into a no-op, so make sure assert stays active.
+#ifdef NDEBUG
+ #undef NDEBUG
+#endif
+#include <cassert>
+#include <cstdint>
+
+#include "../Source/HistoryBuffer.h"
 #include "../Source/LevelerEngine.h"
 #include "../Source/LoudnessMeter.h"
 #include "../Source/TruePeakLimiter.h"
@@ -298,6 +307,251 @@ static void testSampleRateChange()
     assert(std::isfinite(y));
 }
 
+// ---------------------------------------------------------------------------
+// v1.0.3 audit regression tests
+// ---------------------------------------------------------------------------
+
+constexpr double testPi = 3.14159265358979323846;
+
+// Peak 2 must use the lookahead detector: a sudden burst may not overshoot
+// the Peak threshold by more than a fraction of a dB when lookahead is on.
+static void testPeak2UsesLookahead()
+{
+    constexpr double sr = 48000.0;
+    constexpr int lookaheadSamples = 1440; // 30 ms
+
+    for (int shortTransient = 0; shortTransient < 2; ++shortTransient)
+    {
+        SantosLevelerEngine engine;
+        engine.prepare (sr, 2);
+
+        SantosLevelerEngine::Parameters p;
+        p.targetDb = -19.0f;
+        p.gateDb = -40.0f;
+        p.speedMs = 79.0f;
+        p.detectMs = 8.0f;
+        p.lookaheadMs = 30.0f;
+        p.holdMs = 100.0f;
+        p.releaseMs = 100.0f;
+        p.peakThresholdDb = -8.0f;
+        p.rangeDownDb = -12.0f;
+        p.downStrengthPercent = 69.0f;
+        p.rangeUpDb = 15.0f;
+        p.upStrengthPercent = 0.0f;
+
+        const int total = static_cast<int> (sr * 1.5);
+        std::vector<float> x (static_cast<std::size_t> (total));
+        for (int n = 0; n < total; ++n)
+        {
+            const auto t = n / sr;
+            const bool burst = t >= 1.0 && (! shortTransient || t < 1.004);
+            const auto amplitude = burst ? 0.79f : 0.1f;
+            x[static_cast<std::size_t> (n)] = amplitude * static_cast<float> (std::sin (2.0 * testPi * 220.0 * t));
+        }
+
+        float maxOut = 0.0f;
+        for (int n = 0; n < total; ++n)
+        {
+            const auto detector = x[static_cast<std::size_t> (n)];
+            const auto audio = n >= lookaheadSamples ? x[static_cast<std::size_t> (n - lookaheadSamples)] : 0.0f;
+            float l = audio, r = audio;
+            engine.processSampleLookahead (detector, detector, l, r, p);
+            if (n >= static_cast<int> (sr) + lookaheadSamples)
+                maxOut = std::max (maxOut, std::abs (l));
+        }
+
+        // Before the fix this reached about -4.5 dBFS.
+        assert (SantosLevelerEngine::gainToDb (maxOut) < -7.5f);
+    }
+}
+
+// Compressor: attack time, static curve and stereo link must match the controls.
+static void testCompressorMatchesControls()
+{
+    constexpr double sr = 48000.0;
+    SantosVoiceCompressor::Parameters cp;
+    cp.enabled = true;
+    cp.thresholdDb = -20.0f;
+    cp.ratio = 3.0f;
+    cp.attackMs = 10.0f;
+    cp.releaseMs = 120.0f;
+    cp.makeupDb = 0.0f;
+
+    const auto expectedDb = SantosVoiceCompressor::staticReductionDb (-10.0f, -20.0f, 3.0f, SantosConstants::compressorKneeDb);
+
+    for (int oneSided = 0; oneSided < 2; ++oneSided)
+    {
+        SantosVoiceCompressor compressor;
+        compressor.prepare (sr);
+        const int start = static_cast<int> (sr * 0.2);
+        const int total = static_cast<int> (sr * 1.0);
+        std::vector<float> gr (static_cast<std::size_t> (total));
+
+        for (int n = 0; n < total; ++n)
+        {
+            const auto t = n / sr;
+            const auto amplitude = n < start ? 0.01f : 0.316228f; // -40 -> -10 dBFS peak
+            float l = amplitude * static_cast<float> (std::sin (2.0 * testPi * 1000.0 * t));
+            float r = oneSided ? 0.0f : l;
+            compressor.process (l, r, cp);
+            gr[static_cast<std::size_t> (n)] = compressor.getGainReductionDb();
+        }
+
+        const auto steady = gr.back();
+        assert (std::abs (steady - expectedDb) < 0.25f);
+
+        int k = start;
+        while (k < total && gr[static_cast<std::size_t> (k)] > 0.632f * steady)
+            ++k;
+        const auto attackMs = (k - start) * 1000.0 / sr;
+        // Before the fix the real attack was about 45 ms for a 10 ms setting.
+        assert (attackMs > 7.0 && attackMs < 14.0);
+    }
+}
+
+// Reference true-peak measurement, independent of the plugin: 16x windowed-sinc
+// interpolation over +-32 samples (the BS.1770 4x / 12-tap filter reads up to
+// 0.2 dB high near fs/4 and 0.5 dB low on noisy content, so it is not used as ground truth).
+static float exactTruePeakDb (const std::vector<float>& x, int skip)
+{
+    constexpr int oversample = 16, halfWidth = 32;
+    std::vector<double> h (static_cast<std::size_t> (2 * halfWidth * oversample + 1));
+    for (int i = 0; i < static_cast<int> (h.size()); ++i)
+    {
+        const auto t = (i - halfWidth * oversample) / static_cast<double> (oversample);
+        const auto sinc = t == 0.0 ? 1.0 : std::sin (testPi * t) / (testPi * t);
+        h[static_cast<std::size_t> (i)] = sinc * (0.5 + 0.5 * std::cos (testPi * t / halfWidth));
+    }
+
+    double best = 0.0;
+    for (int n = std::max (skip, halfWidth); n < static_cast<int> (x.size()) - halfWidth; ++n)
+        for (int phase = 0; phase < oversample; ++phase)
+        {
+            double value = 0.0;
+            for (int k = -halfWidth + 1; k <= halfWidth; ++k)
+            {
+                const auto index = static_cast<int> (std::lround ((static_cast<double> (phase) / oversample - k + halfWidth) * oversample));
+                value += x[static_cast<std::size_t> (n + k)] * h[static_cast<std::size_t> (index)];
+            }
+            best = std::max (best, std::abs (value));
+        }
+
+    return static_cast<float> (20.0 * std::log10 (std::max (best, 1.0e-9)));
+}
+
+// True Peak Limiter: output stays under the ceiling and the gain never jumps.
+static void testTruePeakLimiterRampAndCeiling()
+{
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        SantosTruePeakLimiter limiter;
+        limiter.prepare (sr, 2);
+        limiter.setCeilingDbTP (-1.0f);
+
+        float previousGain = 1.0f;
+        float largestDrop = 0.0f;
+        const int total = static_cast<int> (sr * 1.0);
+        std::vector<float> output (static_cast<std::size_t> (total));
+
+        for (int n = 0; n < total; ++n)
+        {
+            const auto t = n / sr;
+            const auto amplitude = t > 0.3 ? 1.6f : 0.3f;
+            const auto x = amplitude * static_cast<float> (std::sin (2.0 * testPi * (sr / 4.0 + 11.0) * t + 0.7));
+            float wl = 0.0f, wr = 0.0f, dl = 0.0f, dr = 0.0f;
+            limiter.process (x, x, x, x, wl, wr, dl, dr);
+            output[static_cast<std::size_t> (n)] = wl;
+
+            const auto gain = SantosLevelerEngine::dbToGain (limiter.getGainReductionDb());
+            largestDrop = std::max (largestDrop, previousGain - gain);
+            previousGain = gain;
+        }
+
+        assert (exactTruePeakDb (output, 2000) <= -1.0f + 0.001f);
+        // Before the fix the gain dropped by up to ~0.5 (linear) in a single sample.
+        assert (largestDrop < 0.05f);
+    }
+}
+
+// Noisy high-frequency content (sibilants) is the worst case for true-peak detection:
+// the old 4x / 12-tap detector let it through up to ~0.5 dB above the ceiling.
+static void testTruePeakLimiterNoisyContent()
+{
+    std::uint32_t state = 12345u;
+    const auto nextGaussian = [&state]
+    {
+        float sum = 0.0f;
+        for (int i = 0; i < 12; ++i)
+        {
+            state = state * 1664525u + 1013904223u;
+            sum += static_cast<float> (state >> 8) / 16777216.0f;
+        }
+        return sum - 6.0f;
+    };
+
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+        for (const float sigma : { 0.3f, 0.5f })
+        {
+            SantosTruePeakLimiter limiter;
+            limiter.prepare (sr, 2);
+            limiter.setCeilingDbTP (-1.0f);
+
+            const int total = static_cast<int> (sr * 0.7);
+            std::vector<float> output (static_cast<std::size_t> (total));
+            for (int n = 0; n < total; ++n)
+            {
+                const auto x = sigma * nextGaussian();
+                float wl = 0.0f, wr = 0.0f, dl = 0.0f, dr = 0.0f;
+                limiter.process (x, x, x, x, wl, wr, dl, dr);
+                output[static_cast<std::size_t> (n)] = wl;
+            }
+
+            // Before the fix: +0.26 dBTP (1.3 dB over the ceiling) at sigma 0.5. White noise limited by 10 dB is far harsher than any voice.
+            assert (exactTruePeakDb (output, 4000) <= -1.0f + 0.1f);
+        }
+}
+
+// Integrated loudness: relative gate works and memory does not grow.
+static void testIntegratedRelativeGate()
+{
+    constexpr double sr = 48000.0;
+    SantosLoudnessMeter loudness;
+    loudness.prepare (sr, 2);
+
+    const auto run = [&] (float amplitude, double seconds)
+    {
+        for (int n = 0; n < static_cast<int> (sr * seconds); ++n)
+        {
+            const auto s = amplitude * static_cast<float> (std::sin (2.0 * testPi * 1000.0 * n / sr));
+            loudness.processSample (s, s);
+        }
+    };
+
+    run (0.1f, 10.0);   // about -20 LUFS
+    run (0.01f, 10.0);  // about -40 LUFS, must be removed by the relative gate
+    run (0.0f, 5.0);    // silence, removed by the absolute gate
+
+    const auto integrated = loudness.getIntegratedLufs();
+    assert (integrated > -20.3f && integrated < -19.7f);
+}
+
+// The history buffer must never block the UI thread after clear().
+static void testHistoryBufferClearDoesNotBlock()
+{
+    static SantosHistoryBuffer historyBuffer;
+    for (int i = 0; i < 100; ++i)
+        historyBuffer.push ({});
+
+    historyBuffer.clear();
+    assert (historyBuffer.copyLatest (320).empty()); // used to spin forever
+
+    SantosHistoryPoint point;
+    point.riderDb = 3.0f;
+    historyBuffer.push (point);
+    const auto latest = historyBuffer.copyLatest (320);
+    assert (latest.size() == 1 && std::abs (latest[0].riderDb - 3.0f) < 1.0e-6f);
+}
+
 int main()
 {
     constexpr double sr = 48000.0;
@@ -417,7 +671,7 @@ int main()
 
     SantosTruePeakLimiter limiter;
     limiter.prepare (sr, 2);
-    assert (limiter.getLatencySamples() == 48);
+    assert (limiter.getLatencySamples() == 96); // 2 ms at 48 kHz
 
     constexpr float hotSignal = 1.2f;
     constexpr float dryReference = 0.5f;
@@ -481,6 +735,12 @@ int main()
     testLoudnessIntegratedGating();
     testParameterBoundaries();
     testSampleRateChange();
+    testPeak2UsesLookahead();
+    testCompressorMatchesControls();
+    testTruePeakLimiterRampAndCeiling();
+    testTruePeakLimiterNoisyContent();
+    testIntegratedRelativeGate();
+    testHistoryBufferClearDoesNotBlock();
 
     std::cout << "SANTOS LEVELER DSP tests passed.\n";
     return 0;

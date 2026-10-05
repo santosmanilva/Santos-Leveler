@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "DenormalProtection.h"
@@ -36,6 +37,11 @@ public:
                                           57414.25935878171);
         }
 
+        // Integrated loudness uses a fixed-size histogram of the gated 400 ms
+        // blocks, allocated here and never resized on the audio thread.
+        integratedEnergyHistogram.assign (integratedHistogramBins, 0.0);
+        integratedCountHistogram.assign (integratedHistogramBins, 0);
+
         resetAll();
     }
 
@@ -52,9 +58,8 @@ public:
         blockHistoryWrite = 0;
         blockHistoryCount = 0;
         samplesInCurrent100ms = 0;
-        integrated400msEnergies.clear();
+        clearIntegratedHistogram();
         integrated100msBlocksSinceReset = 0;
-        integratedUpdateCounter = 0;
         momentaryLufs = -100.0f;
         shortTermLufs = -100.0f;
         integratedLufs = -100.0f;
@@ -63,9 +68,8 @@ public:
 
     void resetIntegratedAndTruePeak() noexcept
     {
-        integrated400msEnergies.clear();
+        clearIntegratedHistogram();
         integrated100msBlocksSinceReset = 0;
-        integratedUpdateCounter = 0;
         integratedLufs = -100.0f;
         resetTruePeak();
     }
@@ -228,43 +232,60 @@ private:
         }
         energy400ms *= 0.25;
 
-        if (energyToLufs (energy400ms) > -70.0f)
-            integrated400msEnergies.push_back (energy400ms);
+        const auto blockLufs = energyToLufs (energy400ms);
+        if (blockLufs > absoluteGateLufs && ! integratedEnergyHistogram.empty())
+        {
+            const auto bin = binForLufs (blockLufs);
+            integratedEnergyHistogram[bin] += energy400ms;
+            ++integratedCountHistogram[bin];
+            integratedTotalEnergy += energy400ms;
+            ++integratedTotalCount;
+        }
 
-        // EBU Mode only requires the live Integrated display to update at 1 Hz.
-        // Keep the 100 ms gating blocks, but avoid re-scanning the full history 10x/sec.
-        if (++integratedUpdateCounter < 10 && integrated400msEnergies.size() > 1)
-            return;
-        integratedUpdateCounter = 0;
-
-        if (integrated400msEnergies.empty())
+        if (integratedTotalCount == 0)
         {
             integratedLufs = -100.0f;
             return;
         }
 
-        double absoluteEnergy = 0.0;
-        for (const auto energy : integrated400msEnergies)
-            absoluteEnergy += energy;
-        absoluteEnergy /= static_cast<double> (integrated400msEnergies.size());
-
-        const auto relativeThreshold = energyToLufs (absoluteEnergy) - 10.0f;
-        const auto finalThreshold = std::max (-70.0f, relativeThreshold);
+        // Relative gate: -10 LU below the absolute-gated mean.
+        const auto absoluteGatedLufs = energyToLufs (integratedTotalEnergy / static_cast<double> (integratedTotalCount));
+        const auto finalThreshold = std::max (absoluteGateLufs, absoluteGatedLufs - 10.0f);
 
         double gatedEnergy = 0.0;
-        std::size_t gatedCount = 0;
-        for (const auto energy : integrated400msEnergies)
+        std::uint64_t gatedCount = 0;
+        for (std::size_t bin = 0; bin < integratedHistogramBins; ++bin)
         {
-            if (energyToLufs (energy) > finalThreshold)
+            if (integratedCountHistogram[bin] == 0)
+                continue;
+
+            // Blocks are compared with the threshold at the bin centre (0.005 LU resolution).
+            const auto binCentreLufs = absoluteGateLufs + (static_cast<float> (bin) + 0.5f) * integratedHistogramStepLu;
+            if (binCentreLufs > finalThreshold)
             {
-                gatedEnergy += energy;
-                ++gatedCount;
+                gatedEnergy += integratedEnergyHistogram[bin];
+                gatedCount += integratedCountHistogram[bin];
             }
         }
 
         integratedLufs = gatedCount > 0
             ? energyToLufs (gatedEnergy / static_cast<double> (gatedCount))
             : -100.0f;
+    }
+
+    static std::size_t binForLufs (float lufs) noexcept
+    {
+        const auto position = (lufs - absoluteGateLufs) / integratedHistogramStepLu;
+        const auto bin = static_cast<long long> (std::floor (position));
+        return static_cast<std::size_t> (std::clamp<long long> (bin, 0, static_cast<long long> (integratedHistogramBins) - 1));
+    }
+
+    void clearIntegratedHistogram() noexcept
+    {
+        std::fill (integratedEnergyHistogram.begin(), integratedEnergyHistogram.end(), 0.0);
+        std::fill (integratedCountHistogram.begin(), integratedCountHistogram.end(), 0);
+        integratedTotalEnergy = 0.0;
+        integratedTotalCount = 0;
     }
 
     void resetTruePeak() noexcept
@@ -296,6 +317,16 @@ private:
                 }
                 maximum = std::max (maximum, std::abs (value));
             }
+
+            // The four interpolation phases of the BS.1770 filter never land exactly
+            // on the original samples, so include the two samples the phases sit
+            // between. This keeps true peak >= sample peak; without it the reading
+            // could fall below the sample peak on high-frequency content.
+            const auto& channelHistory = truePeakHistory[static_cast<std::size_t> (channel)];
+            const auto alignedA = (truePeakWriteIndex - 5 + 12) % 12;
+            const auto alignedB = (truePeakWriteIndex - 6 + 12) % 12;
+            maximum = std::max (maximum, std::abs (channelHistory[static_cast<std::size_t> (alignedA)]));
+            maximum = std::max (maximum, std::abs (channelHistory[static_cast<std::size_t> (alignedB)]));
         }
 
         if (++truePeakWriteIndex >= 12)
@@ -316,8 +347,13 @@ private:
     int blockHistoryWrite = 0;
     int blockHistoryCount = 0;
     int integrated100msBlocksSinceReset = 0;
-    int integratedUpdateCounter = 0;
-    std::vector<double> integrated400msEnergies;
+    static constexpr float absoluteGateLufs = -70.0f;
+    static constexpr float integratedHistogramStepLu = 0.01f;
+    static constexpr std::size_t integratedHistogramBins = 8000; // -70 .. +10 LUFS
+    std::vector<double> integratedEnergyHistogram;
+    std::vector<std::uint64_t> integratedCountHistogram;
+    double integratedTotalEnergy = 0.0;
+    std::uint64_t integratedTotalCount = 0;
 
     float momentaryLufs = -100.0f;
     float shortTermLufs = -100.0f;

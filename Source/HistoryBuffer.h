@@ -33,25 +33,33 @@ public:
     // buffer existed to support 30/60 second development CSV exports.
     static constexpr std::size_t capacity = 512;
 
+    // Called from prepareToPlay(). Resets the write counter as well, so the
+    // reader never waits for slots that were wiped.
     void clear() noexcept
     {
         for (auto& slot : slots)
             slot.sequence.store(0, std::memory_order_relaxed);
+        writeCount.store(0, std::memory_order_release);
     }
 
     void push (SantosHistoryPoint point) noexcept
     {
-        const auto sequence = writeCount.fetch_add(1, std::memory_order_relaxed);
+        const auto sequence = writeCount.load(std::memory_order_relaxed);
         const auto index = static_cast<std::size_t>(sequence % capacity);
         auto& slot = slots[index];
 
-        // Increment sequence to odd (write in progress)
-        slot.sequence.store(sequence * 2 + 1, std::memory_order_release);
+        // Odd sequence = write in progress.
+        slot.sequence.store(sequence * 2 + 1, std::memory_order_relaxed);
+        std::atomic_thread_fence(std::memory_order_release);
         slot.point = point;
-        // Increment sequence to even (write complete)
+        // Even sequence = write complete.
         slot.sequence.store(sequence * 2 + 2, std::memory_order_release);
+        writeCount.store(sequence + 1, std::memory_order_release);
     }
 
+    // Never blocks: a slot that is being written, was overwritten or was wiped
+    // by clear() is skipped instead of waited for. (The previous version spun
+    // forever on the UI thread after clear() while the transport was stopped.)
     std::vector<SantosHistoryPoint> copyLatest (std::size_t maxPoints) const
     {
         const auto end = writeCount.load(std::memory_order_acquire);
@@ -66,15 +74,18 @@ public:
         {
             const auto index = static_cast<std::size_t>(seq % capacity);
             const auto& slot = slots[index];
+            const auto expectedSequence = seq * 2 + 2;
 
-            // Wait for write to complete (sequence even)
-            auto expectedSequence = (seq * 2 + 2);
-            while (slot.sequence.load(std::memory_order_acquire) != expectedSequence)
-            {
-                // Writer is in progress - spin briefly
-                // In practice this is extremely fast since audio thread writes once per ~16ms
-            }
-            result.push_back(slot.point);
+            if (slot.sequence.load(std::memory_order_acquire) != expectedSequence)
+                continue;
+
+            const auto copy = slot.point;
+            std::atomic_thread_fence(std::memory_order_acquire);
+
+            if (slot.sequence.load(std::memory_order_relaxed) != expectedSequence)
+                continue; // overwritten while copying
+
+            result.push_back(copy);
         }
 
         return result;
