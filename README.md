@@ -1,165 +1,193 @@
-# SANTOS LEVELER — native VST3 project
+# Santos Leveler v1.0.2
 
-This is a native C++/JUCE implementation of the working **SANTOS LEVELER v17** MNodes patch. Once compiled, the resulting VST3 does **not** require MNodes on the target computer.
+**Voice Auto Level Rider · VST3 · Windows x64 · Open Source**
 
-## Current target
+[![Build Windows VST3](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml/badge.svg)](https://github.com/santosmanilva/Santos-Leveler/actions/workflows/build-windows-vst3.yml)
+![Version](https://img.shields.io/badge/version-1.0.2-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20x64-informational)
+![Format](https://img.shields.io/badge/format-VST3-orange)
+![JUCE](https://img.shields.io/badge/JUCE-8.0.12-4c8bf5)
+![C++](https://img.shields.io/badge/C%2B%2B-17-00599C)
+![License](https://img.shields.io/badge/license-AGPL--3.0-brightgreen)
+
+[English documentation](README_EN.md)
+
+## Descarga y manuales
+
+**[⬇ Descargar Santos Leveler v1.0.2 — Windows x64 VST3](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.2/Santos-Leveler-v1.0.2-Windows-x64-VST3.zip)**
+
+Última versión estable · Windows 10/11 x64 · VST3
+
+- **[Manual de usuario — Español (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-Manual-Usuario-ES.pdf)**
+- **[User Manual — English (PDF)](https://github.com/santosmanilva/Santos-Leveler/releases/download/v1.0.0/Santos-Leveler-v1.0.0-User-Manual-EN.pdf)**
+- [Ver la Release v1.0.2](https://github.com/santosmanilva/Santos-Leveler/releases/tag/v1.0.2)
+
+> Los manuales publicados para v1.0.0 siguen siendo válidos para v1.0.2. Las versiones 1.0.1 y 1.0.2 son actualizaciones de mantenimiento y no modifican los controles ni los valores de usuario documentados.
+
+![Santos Leveler](docs/santos-leveler-v1.0.0.jpg)
+
+Santos Leveler es un procesador VST3 para voz diseñado para mantener un nivel más uniforme de forma automática, conservando naturalidad y ofreciendo control visual detallado del proceso. Está desarrollado en C++ con JUCE.
+
+**Diseñado y desarrollado por José Antonio Santos Santos.**
+
+> Santos Leveler es **software libre y de código abierto** bajo **GNU Affero General Public License v3.0 (AGPL-3.0-only)**. Puedes usar, estudiar, modificar y redistribuir el código conforme a los términos de AGPLv3. Consulta [LICENSE](LICENSE).
+
+## Historia del proyecto
+
+Los primeros prototipos de Santos Leveler se crearon en **[MNodes](https://marionietoworld.com/mnodes/)**, el entorno modular de audio desarrollado por **Mario Nieto**. MNodes permitió explorar y validar inicialmente la idea del nivelador automático de voz antes de reimplementar el proyecto como plugin VST3 nativo en C++/JUCE.
+
+La versión actual no depende de MNodes en tiempo de ejecución.
+
+Más información: [HISTORY.md](HISTORY.md).
+
+## Compatibilidad
 
 - Windows 10/11 x64
-- VST3 effect
-- Optional Standalone build for testing
-- Mono and stereo tracks, stereo-linked detector
-- 64-bit host process
+- VST3 de 64 bits
+- Efecto de audio para pistas mono y estéreo
+- Procesamiento estéreo enlazado
+- Interfaz redimensionable
+- Tamaño inicial: **1310 × 640**
+- Tamaño máximo: **2625 × 1280**
+- Sin versión Standalone
 
-## Parameters
+## Características principales
 
-| Parameter | Range | Default | Behaviour |
-|---|---:|---:|---|
-| Target | -36…-12 dB | -20 dB | Desired voice level |
-| Gate | -70…-25 dB | -45 dB | Below this detector level (minus a fixed 3 dB hysteresis band), rider returns to unity rather than raising background noise |
-| Attack | 2…250 ms | 12 ms | Gain response time while pulling gain DOWN (input louder than Target); 2 ms minimum prevents the unstable sub-2 ms region found during MNodes testing |
-| Release | 2…250 ms | 45 ms | Gain response time while raising gain back UP (input quieter than Target) |
-| Detect | 1…100 ms | 8 ms | RMS detector window |
-| Range Down | -12…0 dB | -9 dB | Amount of downward rider correction |
-| Range Up | 0…+12 dB | +9 dB | Amount of upward rider correction; 0 disables positive riding |
-| Lookahead | 0…15 ms | 8 ms | Delays the audio path so the rider gain (computed from the live, undelayed signal) has a head start on transients before they reach the output. Reported to the host as plugin latency (PDC) |
-| Ceiling | -12…0 dB | -0.3 dB | Safety limiter threshold applied after the rider and output trim; instant attack, 60 ms smoothed release |
-| Output | -12…+12 dB | 0 dB | Final output trim |
+- **Voice Auto Level Rider** con Target, Gate, Speed, Detect, Lookahead, Hold y Release.
+- Detector combinado **FAST/SLOW**.
+- **Smart Gate** con histéresis.
+- **Preserve Dynamics**.
+- **Range Down / Range Up** hasta ±16 dB.
+- **Down Strength / Up Strength**.
+- **Intensity** global para Rider y Peak 2.
+- **Peak 2** con release adaptativo.
+- Módulo **Dynamics** con compresor de voz feed-forward, estéreo enlazado y soft knee.
+- **True Peak Limiter** con 1 ms de lookahead, release de 120 ms y Ceiling ajustable de -9 a -1 dBTP.
+- Medidores de pico para Input, Leveler Out y Final Out.
+- Medición **True Peak dBTP** y **LUFS-M / LUFS-S / LUFS-I**.
+- Gráfica **Live Response** con INPUT, RIDER, PEAK y LEVELER OUT activables individualmente.
+- Memorias **A/B**.
+- Presets de fábrica y presets de usuario `.slpreset`.
+- **Bypass alineado en latencia**.
 
-The Range behaviour intentionally follows the working v17 patch: the positive and negative correction branches are each capped at 12 dB and then scaled by the selected Range value.
+## Cadena de señal
 
-Attack and Release replace the single v1 "Speed" knob, split by direction — the same convention a compressor uses for gain reduction vs. gain recovery, applied here to the rider's downward and upward correction.
+```text
+INPUT
+  ↓
+Voice Auto Level Rider
+  ├─ FAST/SLOW detector
+  ├─ Smart Gate
+  ├─ Preserve Dynamics
+  ├─ Range / Strength / Intensity
+  └─ Peak 2
+  ↓
+LEVELER OUT trim
+  ↓
+Voice Compressor
+  ↓
+True Peak Limiter
+  ↓
+Bypass alineado
+  ↓
+Peak / True Peak / LUFS
+  ↓
+OUTPUT
+```
 
-## History graph
+## Parámetros Default v1.0.2
 
-The native UI draws all three histories in one large graph:
+| Parámetro | Default |
+|---|---:|
+| Gate | -40 dB |
+| Target | -19 dB |
+| Speed | 79 ms |
+| Detect | 8 ms |
+| Lookahead | 30 ms |
+| Hold | 100 ms |
+| Release | 100 ms |
+| Peak | -8 dBFS |
+| Range Down | -12 dB |
+| Down Strength | 69 % |
+| Range Up | +15 dB |
+| Up Strength | 50 % |
+| Leveler Out | 0 dB |
+| Intensity | 100 % |
+| Compressor | On |
+| Comp Threshold | -20 dB |
+| Comp Ratio | 3:1 |
+| Comp Attack | 10 ms |
+| Comp Release | 120 ms |
+| Comp Makeup | +2 dB |
+| Ceiling | -1 dBTP |
+| Bypass | Off |
 
-- **Blue:** input RMS level, -60…0 dBFS
-- **Yellow:** actual smoothed rider gain, -12…+12 dB
-- **Green:** output RMS level, -60…0 dBFS
+## Presets
 
-When the host provides transport state, the graph **stops advancing when the DAW is stopped/paused** and resumes on Play. In Standalone mode, where there is no DAW transport, history runs continuously.
+Presets de fábrica: **Default, Gentle, Natural, Broadcast y Tight**.
 
-## Build on Windows
+Los presets de usuario utilizan extensión `.slpreset` y se guardan por defecto en:
 
-### Requirements
+```text
+Documentos\Santos Leveler Presets
+```
 
-1. Visual Studio 2022 with **Desktop development with C++**
-2. CMake 3.22 or newer
-3. Git for Windows
+## Medición
 
-JUCE is fetched automatically at configure time. The project is pinned to JUCE **8.0.12** for reproducible builds.
+- **INPUT:** pico dBFS
+- **LEVELER OUT:** pico dBFS antes de Dynamics
+- **FINAL OUT:** pico dBFS después de compresor, True Peak y bypass final
+- **TRUE PEAK:** dBTP
+- **LOUDNESS:** LUFS-M, LUFS-S y LUFS-I
 
-### One-command build
+La medición de loudness se basa en algoritmos de **ITU-R BS.1770-5** y conceptos de EBU R128/Tech 3341. Santos Leveler no se presenta como equipo de medida certificado.
 
-Open PowerShell in this folder and run:
+## Compilar en Windows
+
+Requisitos:
+
+1. Visual Studio con **Desarrollo para el escritorio con C++**. El preset local actual utiliza Visual Studio 2026; el CI oficial compila también con Visual Studio 2022.
+2. CMake 3.22 o superior.
+3. Git for Windows.
+
+El proyecto usa C++17 y obtiene **JUCE 8.0.12** mediante CMake FetchContent.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-The script configures CMake, compiles the VST3 and Standalone targets, and runs the lightweight DSP tests.
+El script obtiene la versión del proyecto desde `CMakeLists.txt`, compila `SantosLeveler_VST3` y `SantosLevelerDSPTests`, ejecuta los tests DSP y muestra la ubicación del VST3 generado.
 
-The resulting VST3 will be inside:
+## Instalación
 
-```text
-build\windows-x64\SantosLeveler_artefacts\Release\VST3\SANTOS LEVELER.vst3
-```
-
-The exact intermediate path can vary slightly with JUCE/CMake; the build script prints the actual location when it finishes.
-
-### Install
-
-Copy the complete `SANTOS LEVELER.vst3` bundle/folder to:
+Copiar la carpeta completa `Santos Leveler.vst3` a:
 
 ```text
 C:\Program Files\Common Files\VST3
 ```
 
-Administrator rights may be required. Then rescan VST3 plug-ins in the DAW.
+Después, realizar un rescan de plugins VST3 en el DAW.
 
-An optional helper is included:
+## Licencia
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
-```
+Santos Leveler se publica bajo **GNU Affero General Public License v3.0, exclusivamente versión 3 (`AGPL-3.0-only`)**.
 
-Run that from an elevated PowerShell after building.
+La licencia permite usar, estudiar, modificar y redistribuir el software bajo sus condiciones de copyleft. Las redistribuciones y versiones modificadas deben cumplir las obligaciones de AGPLv3, incluido el acceso al código fuente correspondiente cuando sea exigible.
 
-## Build without installing anything locally: GitHub Actions
+Consulte también:
 
-The included workflow:
+- [LICENSE](LICENSE)
+- [PUBLIC_SOURCE_NOTICE.md](PUBLIC_SOURCE_NOTICE.md)
+- [THIRD_PARTY.md](THIRD_PARTY.md)
 
-```text
-.github/workflows/build-windows-vst3.yml
-```
+## Aviso técnico y responsabilidad
 
-builds the Windows x64 VST3 on GitHub's Windows runner and uploads `SANTOS-LEVELER-Windows-x64-VST3` as a downloadable workflow artifact.
+El software se proporciona sin garantía en los términos establecidos por AGPLv3. Las funciones de loudness, pico y True Peak forman parte del flujo de procesamiento y no convierten Santos Leveler en equipo de medición certificado ni garantizan el cumplimiento de una especificación de emisión o entrega concreta.
 
-Typical workflow:
+Las versiones modificadas deben identificarse claramente como tales y no deben presentarse como versiones oficiales o respaldadas por Santos Leveler sin autorización.
 
-1. Create a GitHub repository.
-2. Upload the contents of this folder.
-3. Open **Actions → Build Windows VST3 → Run workflow**.
-4. When it finishes, download the VST3 artifact from the workflow run.
+## Contacto y colaboración
 
-## DSP design
-
-The audio engine is independent of JUCE and lives in `Source/LevelerEngine.h`.
-
-Simplified path:
-
-```text
-Input ──┬─────────────────────────────────────────────► Lookahead delay line ─┐
-        ↓                                                                     │
-linked RMS detector (reads the LIVE, undelayed signal)                        │
-        ↓                                                                     │
-level in dB                                                                   │
-        ↓                                                                     │
-Target - Input                                                                │
-        ↓                                                                     │
-positive / negative correction branches                                      │
-        ↓                                                                     │
-Range Up / Range Down                                                         │
-        ↓                                                                     │
-Gate activity (with hysteresis)                                               │
-        ↓                                                                     │
-dB → linear gain                                                              │
-        ↓                                                                     │
-Attack / Release gain smoothing  ───────────────────────────────────────────► × gain
-                                                                                ↓
-                                                                        Output trim
-                                                                                ↓
-                                                                   Ceiling safety limiter
-                                                                                ↓
-                                                                             Output
-```
-
-The detector reads the signal before it enters the lookahead delay line, so the smoothed gain has `Lookahead` ms to react before it is applied to the matching (now delayed) audio. The control decision is refreshed at approximately 240 Hz, mirroring the working MNodes implementation, while gain interpolation and the limiter both run per sample.
-
-## DSP tests
-
-`Tests/LevelerDSPTests.cpp` is framework-independent and checks five essential behaviours:
-
-- a quiet signal is raised toward Target with full Range Up;
-- Range Up = 0 prevents positive gain;
-- Gate prevents the rider from raising a below-gate signal;
-- Output -6 dB produces approximately 6 dB attenuation;
-- the Ceiling safety limiter never lets a loud, hard-riding signal exceed the configured ceiling, sample by sample, even with Lookahead disabled.
-
-The tests can be built without JUCE directly with any C++17 compiler, and are also included in the CMake/CI build.
-
-## Distribution and licensing
-
-The plug-in source uses JUCE. JUCE is dual-licensed; before distributing a closed-source/commercial binary, verify that your intended distribution complies with the JUCE licence you hold. The VST3 SDK itself is distributed under the current Steinberg VST3 licensing terms used by the JUCE version selected by this project.
-
-The target computer does not need JUCE or MNodes installed; they are development/build dependencies, not runtime plug-in dependencies.
-
-## Next improvements
-
-Implemented since v1: lookahead, separate Attack/Release, a hysteretic Gate, and a Ceiling safety limiter (see Parameters above). Good candidates for later revisions are:
-
-- true hard Range clamp mode instead of the current proportional range scaling;
-- live-updating host latency (PDC) if Lookahead is dragged mid-playback, instead of only on prepare/reload;
-- an exposed/adjustable Gate hysteresis amount (currently a fixed 3 dB internally);
-- meter ballistics (peak-hold), History graph time axis and Target/Gate reference lines, a bypass/A-B toggle, and factory presets — UI-side work, not yet started;
-- macOS Universal VST3/AU builds.
+**José Antonio Santos Santos**  
+GitHub: [santosmanilva/Santos-Leveler](https://github.com/santosmanilva/Santos-Leveler)  
+Errores y propuestas: [GitHub Issues](https://github.com/santosmanilva/Santos-Leveler/issues)
